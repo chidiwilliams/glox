@@ -2,7 +2,7 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -12,11 +12,11 @@ import (
 
 var hadError bool
 
-type token uint8
+type TokenType uint8
 
 const (
 	// single-character tokens
-	tokenLeftParen token = iota
+	tokenLeftParen TokenType = iota
 	tokenRightParen
 	tokenLeftBrace
 	tokenRightBrace
@@ -106,9 +106,24 @@ func runFile(path string) {
 func run(source string) {
 	scanner := NewScanner(source)
 	tokens := scanner.scanTokens()
-	for _, tkn := range tokens {
-		s, _ := json.MarshalIndent(tkn, "", "\t")
-		fmt.Printf("%s\n", s)
+
+	parser := Parser{tokens: tokens}
+	expr := parser.parse()
+
+	if hadError {
+		return
+	}
+
+	fmt.Println(AstPrinter{}.Print(expr))
+}
+
+// TODO: Fix these errors. See Lox.error, p91
+
+func reportTokenErr(token Token, message string) {
+	if token.tokenType == tokenEof {
+		report(token.Line, " at end", message)
+	} else {
+		report(token.Line, " at '"+token.Lexeme+"'", message)
 	}
 }
 
@@ -122,18 +137,18 @@ func report(line int, where string, message string) {
 }
 
 type Token struct {
-	TokenType token
+	tokenType TokenType
 	Lexeme    string
 	Literal   interface{}
 	Line      int
 }
 
-func NewToken(tokenType token, lexeme string, literal interface{}, line int) Token {
-	return Token{TokenType: tokenType, Lexeme: lexeme, Literal: literal, Line: line}
+func NewToken(tknType TokenType, lexeme string, literal interface{}, line int) Token {
+	return Token{tokenType: tknType, Lexeme: lexeme, Literal: literal, Line: line}
 }
 
 func (t Token) String() string {
-	return fmt.Sprintf("%d %s %s", t.TokenType, t.Lexeme, t.Literal)
+	return fmt.Sprintf("%d %s %s", t.tokenType, t.Lexeme, t.Literal)
 }
 
 type Scanner struct {
@@ -185,7 +200,7 @@ func (s *Scanner) scanToken() {
 
 	// with look-ahead
 	case '!':
-		var nextToken token
+		var nextToken TokenType
 		if s.match('=') {
 			nextToken = tokenBangEqual
 		} else {
@@ -193,7 +208,7 @@ func (s *Scanner) scanToken() {
 		}
 		s.addToken(nextToken)
 	case '=':
-		var nextToken token
+		var nextToken TokenType
 		if s.match('=') {
 			nextToken = tokenEqualEqual
 		} else {
@@ -201,7 +216,7 @@ func (s *Scanner) scanToken() {
 		}
 		s.addToken(nextToken)
 	case '<':
-		var nextToken token
+		var nextToken TokenType
 		if s.match('=') {
 			nextToken = tokenLessEqual
 		} else {
@@ -209,7 +224,7 @@ func (s *Scanner) scanToken() {
 		}
 		s.addToken(nextToken)
 	case '>':
-		var nextToken token
+		var nextToken TokenType
 		if s.match('=') {
 			nextToken = tokenGreaterEqual
 		} else {
@@ -257,21 +272,21 @@ func (s *Scanner) advance() rune {
 	return curr
 }
 
-func (s *Scanner) addToken(tokenType token) {
+func (s *Scanner) addToken(tokenType TokenType) {
 	s.addTokenWithLiteral(tokenType, nil)
 }
 
-func (s *Scanner) addTokenWithLiteral(tokenType token, literal interface{}) {
+func (s *Scanner) addTokenWithLiteral(tokenType TokenType, literal interface{}) {
 	text := s.source[s.start:s.current]
 	s.tokens = append(s.tokens, NewToken(tokenType, text, literal, s.line))
 }
 
-func (s *Scanner) match(char rune) bool {
+func (s *Scanner) match(expected rune) bool {
 	if s.isAtEnd() {
 		return false
 	}
 
-	if rune(s.source[s.current]) == char {
+	if rune(s.source[s.current]) != expected {
 		return false
 	}
 
@@ -337,24 +352,7 @@ func (s *Scanner) isAlpha(char rune) bool {
 	return (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char == '_')
 }
 
-func (s *Scanner) identifier() {
-	for s.isAlphaNumeric(s.peek()) {
-		s.advance()
-	}
-
-	text := s.source[s.start:s.current]
-	tokenType, found := keywords[text]
-	if !found {
-		tokenType = tokenIdentifier
-	}
-	s.addToken(tokenType)
-}
-
-func (s *Scanner) isAlphaNumeric(char rune) bool {
-	return s.isAlpha(char) || s.isDigit(char)
-}
-
-var keywords = map[string]token{
+var keywords = map[string]TokenType{
 	"and":    tokenAnd,
 	"class":  tokenClass,
 	"else":   tokenElse,
@@ -372,3 +370,280 @@ var keywords = map[string]token{
 	"var":    tokenVar,
 	"while":  tokenWhile,
 }
+
+func (s *Scanner) identifier() {
+	for s.isAlphaNumeric(s.peek()) {
+		s.advance()
+	}
+
+	text := s.source[s.start:s.current]
+	tknType, found := keywords[text]
+	if !found {
+		tknType = tokenIdentifier
+	}
+	s.addToken(tknType)
+}
+
+func (s *Scanner) isAlphaNumeric(char rune) bool {
+	return s.isAlpha(char) || s.isDigit(char)
+}
+
+type Expr interface {
+	accept(visitor ExprVisitor) interface{}
+}
+
+type BinaryExpr struct {
+	left     Expr
+	operator Token
+	right    Expr
+}
+
+func (b BinaryExpr) accept(visitor ExprVisitor) interface{} {
+	return visitor.visitBinaryExpr(b)
+}
+
+type GroupingExpr struct {
+	expression Expr
+}
+
+func (b GroupingExpr) accept(visitor ExprVisitor) interface{} {
+	return visitor.visitGroupingExpr(b)
+}
+
+type LiteralExpr struct {
+	value interface{}
+}
+
+func (b LiteralExpr) accept(visitor ExprVisitor) interface{} {
+	return visitor.visitObjectExpr(b)
+}
+
+type UnaryExpr struct {
+	operator Token
+	right    Expr
+}
+
+func (b UnaryExpr) accept(visitor ExprVisitor) interface{} {
+	return visitor.visitUnaryExpr(b)
+}
+
+type ExprVisitor interface {
+	visitBinaryExpr(expr BinaryExpr) interface{}
+	visitGroupingExpr(expr GroupingExpr) interface{}
+	visitObjectExpr(expr LiteralExpr) interface{}
+	visitUnaryExpr(expr UnaryExpr) interface{}
+}
+
+type AstPrinter struct{}
+
+func (a AstPrinter) Print(expr Expr) string {
+	return expr.accept(a).(string)
+}
+
+func (a AstPrinter) visitBinaryExpr(expr BinaryExpr) interface{} {
+	return a.Parenthesize(expr.operator.Lexeme, expr.left, expr.right)
+}
+
+func (a AstPrinter) visitGroupingExpr(expr GroupingExpr) interface{} {
+	return a.Parenthesize("group", expr.expression)
+}
+
+func (a AstPrinter) visitObjectExpr(expr LiteralExpr) interface{} {
+	if expr.value == nil {
+		return "nil"
+	}
+
+	return fmt.Sprint(expr.value)
+}
+
+func (a AstPrinter) visitUnaryExpr(expr UnaryExpr) interface{} {
+	return a.Parenthesize(expr.operator.Lexeme, expr.right)
+}
+
+func (a AstPrinter) Parenthesize(name string, exprs ...Expr) string {
+	var str string
+
+	str += "(" + name
+	for _, expr := range exprs {
+		str += " " + a.Print(expr)
+	}
+	str += ")"
+
+	return str
+}
+
+/**
+Parser grammar:
+
+	expression => equality
+	equality   => comparison ( ( "!=" | "==" ) comparison )*
+	comparison => term ( ( ">" | ">=" | "<" | "<=" ) term )*
+	term       => factor ( ( "+" | "-" ) factor )*
+	factor     => unary ( ( "/" | "*" ) unary )*
+	unary      => ( "!" | "-" ) unary | primary
+	primary    => NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")"
+
+*/
+
+type Parser struct {
+	tokens  []Token
+	current int
+}
+
+func (p Parser) parse() (expr Expr) {
+	defer func() {
+		recover()
+	}()
+
+	return p.expression()
+}
+
+func (p *Parser) expression() Expr {
+	return p.equality()
+}
+
+func (p *Parser) equality() Expr {
+	expr := p.comparison()
+
+	for p.match(tokenBangEqual, tokenEqualEqual) {
+		operator := p.previous()
+		right := p.comparison()
+		expr = BinaryExpr{expr, operator, right}
+	}
+
+	return expr
+}
+
+func (p *Parser) comparison() Expr {
+	expr := p.term()
+
+	for p.match(tokenGreater, tokenGreaterEqual, tokenLess, tokenLessEqual) {
+		operator := p.previous()
+		right := p.term()
+		expr = BinaryExpr{expr, operator, right}
+	}
+
+	return expr
+}
+
+func (p *Parser) term() Expr {
+	expr := p.factor()
+
+	for p.match(tokenMinus, tokenPlus) {
+		operator := p.previous()
+		right := p.factor()
+		expr = BinaryExpr{expr, operator, right}
+	}
+
+	return expr
+}
+
+func (p *Parser) factor() Expr {
+	expr := p.unary()
+
+	for p.match(tokenSlash, tokenStar) {
+		operator := p.previous()
+		right := p.unary()
+		expr = BinaryExpr{expr, operator, right}
+	}
+
+	return expr
+}
+
+func (p *Parser) unary() Expr {
+	if p.match(tokenBang, tokenMinus) {
+		operator := p.previous()
+		right := p.unary()
+		return UnaryExpr{operator, right}
+	}
+
+	return p.primary()
+}
+
+func (p *Parser) primary() Expr {
+	switch {
+	case p.match(tokenFalse):
+		return LiteralExpr{false}
+	case p.match(tokenTrue):
+		return LiteralExpr{true}
+	case p.match(tokenNil):
+		return LiteralExpr{nil}
+	case p.match(tokenNumber, tokenString):
+		return LiteralExpr{p.previous().Literal}
+	case p.match(tokenLeftParen):
+		expr := p.expression()
+		p.consume(tokenRightParen, "Expect ')' after expression.")
+		return GroupingExpr{expr}
+	}
+
+	panic(p.error(p.peek(), "Expect expression."))
+}
+
+func (p *Parser) consume(tokenType TokenType, message string) Token {
+	if p.check(tokenType) {
+		return p.advance()
+	}
+
+	panic(p.error(p.peek(), message))
+}
+
+func (p *Parser) error(token Token, message string) error {
+	reportTokenErr(token, message)
+	return errors.New("parse error")
+}
+
+func (p Parser) synchronize() {
+	p.advance()
+	for !p.isAtEnd() {
+		if p.previous().tokenType == tokenSemicolon {
+			return
+		}
+
+		switch p.peek().tokenType {
+		case tokenClass, tokenFor, tokenFun, tokenIf, tokenPrint, tokenReturn, tokenVar, tokenWhile:
+			return
+		}
+
+		p.advance()
+	}
+}
+
+func (p *Parser) match(types ...TokenType) bool {
+	for _, tokenType := range types {
+		if p.check(tokenType) {
+			p.advance()
+			return true
+		}
+	}
+
+	return false
+}
+
+func (p Parser) check(tokenType TokenType) bool {
+	if p.isAtEnd() {
+		return false
+	}
+
+	return p.peek().tokenType == tokenType
+}
+
+func (p *Parser) advance() Token {
+	if !p.isAtEnd() {
+		p.current++
+	}
+	return p.previous()
+}
+
+func (p *Parser) isAtEnd() bool {
+	return p.peek().tokenType == tokenEof
+}
+
+func (p *Parser) peek() Token {
+	return p.tokens[p.current]
+}
+
+func (p *Parser) previous() Token {
+	return p.tokens[p.current-1]
+}
+
+// TODO: Implement comma operator
