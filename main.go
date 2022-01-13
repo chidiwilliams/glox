@@ -27,6 +27,8 @@ const (
 	tokenSemicolon
 	tokenSlash
 	tokenStar
+	tokenColon
+	tokenQuestionMark
 
 	// one or two character tokens
 	tokenBang
@@ -195,8 +197,12 @@ func (s *Scanner) scanToken() {
 		s.addToken(tokenPlus)
 	case ';':
 		s.addToken(tokenSemicolon)
+	case ':':
+		s.addToken(tokenColon)
 	case '*':
 		s.addToken(tokenStar)
+	case '?':
+		s.addToken(tokenQuestionMark)
 
 	// with look-ahead
 	case '!':
@@ -402,6 +408,16 @@ func (b BinaryExpr) accept(visitor ExprVisitor) interface{} {
 	return visitor.visitBinaryExpr(b)
 }
 
+type TernaryExpr struct {
+	cond  Expr
+	left  Expr
+	right Expr
+}
+
+func (t TernaryExpr) accept(visitor ExprVisitor) interface{} {
+	return visitor.visitTernaryExpr(t)
+}
+
 type GroupingExpr struct {
 	expression Expr
 }
@@ -432,9 +448,14 @@ type ExprVisitor interface {
 	visitGroupingExpr(expr GroupingExpr) interface{}
 	visitObjectExpr(expr LiteralExpr) interface{}
 	visitUnaryExpr(expr UnaryExpr) interface{}
+	visitTernaryExpr(expr TernaryExpr) interface{}
 }
 
 type AstPrinter struct{}
+
+func (a AstPrinter) visitTernaryExpr(expr TernaryExpr) interface{} {
+	return a.Parenthesize("?:", expr.cond, expr.left, expr.right)
+}
 
 func (a AstPrinter) Print(expr Expr) string {
 	return expr.accept(a).(string)
@@ -475,13 +496,15 @@ func (a AstPrinter) Parenthesize(name string, exprs ...Expr) string {
 /**
 Parser grammar:
 
+	series     => ternary ( "," ternary )*
+	ternary    => expression ( "?" ternary ":" ternary )*
 	expression => equality
 	equality   => comparison ( ( "!=" | "==" ) comparison )*
 	comparison => term ( ( ">" | ">=" | "<" | "<=" ) term )*
 	term       => factor ( ( "+" | "-" ) factor )*
 	factor     => unary ( ( "/" | "*" ) unary )*
 	unary      => ( "!" | "-" ) unary | primary
-	primary    => NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")"
+	primary    => NUMBER | STRING | "true" | "false" | "nil" | "(" series ")"
 
 */
 
@@ -495,7 +518,31 @@ func (p Parser) parse() (expr Expr) {
 		recover()
 	}()
 
-	return p.expression()
+	return p.series()
+}
+
+func (p *Parser) series() Expr {
+	expr := p.ternary()
+	for p.match(tokenComma) {
+		operator := p.previous()
+		right := p.ternary()
+		expr = BinaryExpr{expr, operator, right}
+	}
+
+	return expr
+}
+
+func (p *Parser) ternary() Expr {
+	expr := p.expression()
+
+	if p.match(tokenQuestionMark) {
+		cond1 := p.ternary()
+		p.consume(tokenColon, "Expect ':' after conditional.")
+		cond2 := p.ternary()
+		expr = TernaryExpr{expr, cond1, cond2}
+	}
+
+	return expr
 }
 
 func (p *Parser) expression() Expr {
@@ -571,7 +618,7 @@ func (p *Parser) primary() Expr {
 	case p.match(tokenNumber, tokenString):
 		return LiteralExpr{p.previous().Literal}
 	case p.match(tokenLeftParen):
-		expr := p.expression()
+		expr := p.series()
 		p.consume(tokenRightParen, "Expect ')' after expression.")
 		return GroupingExpr{expr}
 	}
