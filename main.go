@@ -1,3 +1,4 @@
+//go:generate go run cmd/ast.go
 package main
 
 import (
@@ -407,63 +408,6 @@ func (s *Scanner) isAlphaNumeric(char rune) bool {
 	return s.isAlpha(char) || s.isDigit(char)
 }
 
-type Expr interface {
-	accept(visitor ExprVisitor) interface{}
-}
-
-type BinaryExpr struct {
-	left     Expr
-	operator Token
-	right    Expr
-}
-
-func (b BinaryExpr) accept(visitor ExprVisitor) interface{} {
-	return visitor.visitBinaryExpr(b)
-}
-
-type TernaryExpr struct {
-	cond  Expr
-	left  Expr
-	right Expr
-}
-
-func (t TernaryExpr) accept(visitor ExprVisitor) interface{} {
-	return visitor.visitTernaryExpr(t)
-}
-
-type GroupingExpr struct {
-	expression Expr
-}
-
-func (b GroupingExpr) accept(visitor ExprVisitor) interface{} {
-	return visitor.visitGroupingExpr(b)
-}
-
-type LiteralExpr struct {
-	value interface{}
-}
-
-func (b LiteralExpr) accept(visitor ExprVisitor) interface{} {
-	return visitor.visitLiteralExpr(b)
-}
-
-type UnaryExpr struct {
-	operator Token
-	right    Expr
-}
-
-func (b UnaryExpr) accept(visitor ExprVisitor) interface{} {
-	return visitor.visitUnaryExpr(b)
-}
-
-type ExprVisitor interface {
-	visitBinaryExpr(expr BinaryExpr) interface{}
-	visitGroupingExpr(expr GroupingExpr) interface{}
-	visitLiteralExpr(expr LiteralExpr) interface{}
-	visitUnaryExpr(expr UnaryExpr) interface{}
-	visitTernaryExpr(expr TernaryExpr) interface{}
-}
-
 type AstPrinter struct{}
 
 func (a AstPrinter) visitTernaryExpr(expr TernaryExpr) interface{} {
@@ -506,47 +450,24 @@ func (a AstPrinter) Parenthesize(name string, exprs ...Expr) string {
 	return str
 }
 
-type Stmt interface {
-	accept(v StmtVisitor)
-}
-
-type ExpressionStmt struct {
-	expr Expr
-}
-
-func (e ExpressionStmt) accept(v StmtVisitor) {
-	v.visitExpressionStmt(e)
-}
-
-type PrintStmt struct {
-	expr Expr
-}
-
-func (p PrintStmt) accept(v StmtVisitor) {
-	v.visitPrintStmt(p)
-}
-
-type StmtVisitor interface {
-	visitExpressionStmt(expr ExpressionStmt)
-	visitPrintStmt(expr PrintStmt)
-}
-
 /**
 Parser grammar:
 
-	program    => statement* EOF
-  statement  => exprStmt | printStmt
-	exprStmt   => series ";"
-	printStmt  => "print" series ";"
-	series     => ternary ( "," ternary )*
-	ternary    => expression ( "?" ternary ":" ternary )*
-	expression => equality
-	equality   => comparison ( ( "!=" | "==" ) comparison )*
-	comparison => term ( ( ">" | ">=" | "<" | "<=" ) term )*
-	term       => factor ( ( "+" | "-" ) factor )*
-	factor     => unary ( ( "/" | "*" ) unary )*
-	unary      => ( "!" | "-" ) unary | primary
-	primary    => NUMBER | STRING | "true" | "false" | "nil" | "(" series ")"
+	program     => declaration* EOF
+	declaration => varDecl | statement
+	varDecl     => "var" IDENTIFIER ( "=" series )? ";"
+	statement   => exprStmt | printStmt
+	exprStmt    => series ";"
+	printStmt   => "print" series ";"
+	series      => ternary ( "," ternary )*
+	ternary     => expression ( "?" ternary ":" ternary )*
+	expression  => equality
+	equality    => comparison ( ( "!=" | "==" ) comparison )*
+	comparison  => term ( ( ">" | ">=" | "<" | "<=" ) term )*
+	term        => factor ( ( "+" | "-" ) factor )*
+	factor      => unary ( ( "/" | "*" ) unary )*
+	unary       => ( "!" | "-" ) unary | primary
+	primary     => NUMBER | STRING | "true" | "false" | "nil" | "(" series ")" | IDENTIFIER
 
 */
 
@@ -764,13 +685,15 @@ func (p *Parser) previous() Token {
 
 type Interpreter struct{}
 
-func (in Interpreter) visitExpressionStmt(statement ExpressionStmt) {
+func (in Interpreter) visitExpressionStmt(statement ExpressionStmt) interface{} {
 	in.evaluate(statement.expr)
+	return nil
 }
 
-func (in Interpreter) visitPrintStmt(statement PrintStmt) {
+func (in Interpreter) visitPrintStmt(statement PrintStmt) interface{} {
 	value := in.evaluate(statement.expr)
 	fmt.Println(in.stringify(value))
+	return nil
 }
 
 func (in Interpreter) interpret(statements []Stmt) {
@@ -779,6 +702,7 @@ func (in Interpreter) interpret(statements []Stmt) {
 			if e, ok := err.(runtimeError); ok {
 				reportRuntimeErr(e)
 			}
+			fmt.Printf("Error: %s\n", err)
 		}
 	}()
 
@@ -865,8 +789,11 @@ func (in Interpreter) visitUnaryExpr(expr UnaryExpr) interface{} {
 }
 
 func (in Interpreter) visitTernaryExpr(expr TernaryExpr) interface{} {
-	// TODO implement me
-	panic("implement me")
+	cond := in.evaluate(expr.cond)
+	if in.isTruthy(cond) {
+		return in.evaluate(expr.left)
+	}
+	return in.evaluate(expr.right)
 }
 
 func (in Interpreter) isTruthy(val interface{}) bool {
