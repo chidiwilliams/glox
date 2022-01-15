@@ -2,15 +2,12 @@ package main
 
 import (
 	"bufio"
-	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"strconv"
 )
-
-var hadError bool
 
 type TokenType uint8
 
@@ -66,6 +63,13 @@ const (
 	tokenEof
 )
 
+var (
+	hadError        bool
+	hadRuntimeError bool
+)
+
+var interpreter = Interpreter{}
+
 func main() {
 	var filePath string
 
@@ -103,20 +107,23 @@ func runFile(path string) {
 	if hadError {
 		os.Exit(65)
 	}
+	if hadRuntimeError {
+		os.Exit(70)
+	}
 }
 
 func run(source string) {
-	scanner := NewScanner(source)
+	scanner := Scanner{source: source}
 	tokens := scanner.scanTokens()
 
 	parser := Parser{tokens: tokens}
-	expr := parser.parse()
+	statements := parser.parse()
 
 	if hadError {
 		return
 	}
 
-	fmt.Println(AstPrinter{}.Print(expr))
+	interpreter.interpret(statements)
 }
 
 // TODO: Fix these errors. See Lox.error, p91
@@ -134,8 +141,22 @@ func reportErr(line int, message string) {
 }
 
 func report(line int, where string, message string) {
-	fmt.Printf("[line %d] Error%s: %s", line, where, message)
+	fmt.Printf("[line %d] Error%s: %s\n", line, where, message)
 	hadError = true
+}
+
+type runtimeError struct {
+	token Token
+	msg   string
+}
+
+func (r runtimeError) Error() string {
+	return fmt.Sprintf("%s\n[line %d]", r.msg, r.token.Line)
+}
+
+func reportRuntimeErr(err error) {
+	fmt.Println(err.Error())
+	hadRuntimeError = true
 }
 
 type Token struct {
@@ -143,10 +164,6 @@ type Token struct {
 	Lexeme    string
 	Literal   interface{}
 	Line      int
-}
-
-func NewToken(tknType TokenType, lexeme string, literal interface{}, line int) Token {
-	return Token{tokenType: tknType, Lexeme: lexeme, Literal: literal, Line: line}
 }
 
 func (t Token) String() string {
@@ -161,10 +178,6 @@ type Scanner struct {
 	tokens  []Token
 }
 
-func NewScanner(source string) *Scanner {
-	return &Scanner{source: source, line: 1}
-}
-
 func (s *Scanner) scanTokens() []Token {
 	for !s.isAtEnd() {
 		// we're at the beginning of the next lexeme
@@ -172,7 +185,7 @@ func (s *Scanner) scanTokens() []Token {
 		s.scanToken()
 	}
 
-	s.tokens = append(s.tokens, NewToken(tokenEof, "", nil, s.line))
+	s.tokens = append(s.tokens, Token{tokenEof, "", nil, s.line})
 	return s.tokens
 }
 
@@ -284,7 +297,7 @@ func (s *Scanner) addToken(tokenType TokenType) {
 
 func (s *Scanner) addTokenWithLiteral(tokenType TokenType, literal interface{}) {
 	text := s.source[s.start:s.current]
-	s.tokens = append(s.tokens, NewToken(tokenType, text, literal, s.line))
+	s.tokens = append(s.tokens, Token{tokenType, text, literal, s.line})
 }
 
 func (s *Scanner) match(expected rune) bool {
@@ -315,7 +328,7 @@ func (s *Scanner) string() {
 
 	s.advance() // the closing "
 
-	value := s.source[s.start+1 : s.current+1]
+	value := s.source[s.start:s.current]
 	s.addTokenWithLiteral(tokenString, value)
 }
 
@@ -431,7 +444,7 @@ type LiteralExpr struct {
 }
 
 func (b LiteralExpr) accept(visitor ExprVisitor) interface{} {
-	return visitor.visitObjectExpr(b)
+	return visitor.visitLiteralExpr(b)
 }
 
 type UnaryExpr struct {
@@ -446,7 +459,7 @@ func (b UnaryExpr) accept(visitor ExprVisitor) interface{} {
 type ExprVisitor interface {
 	visitBinaryExpr(expr BinaryExpr) interface{}
 	visitGroupingExpr(expr GroupingExpr) interface{}
-	visitObjectExpr(expr LiteralExpr) interface{}
+	visitLiteralExpr(expr LiteralExpr) interface{}
 	visitUnaryExpr(expr UnaryExpr) interface{}
 	visitTernaryExpr(expr TernaryExpr) interface{}
 }
@@ -469,7 +482,7 @@ func (a AstPrinter) visitGroupingExpr(expr GroupingExpr) interface{} {
 	return a.Parenthesize("group", expr.expression)
 }
 
-func (a AstPrinter) visitObjectExpr(expr LiteralExpr) interface{} {
+func (a AstPrinter) visitLiteralExpr(expr LiteralExpr) interface{} {
 	if expr.value == nil {
 		return "nil"
 	}
@@ -493,9 +506,38 @@ func (a AstPrinter) Parenthesize(name string, exprs ...Expr) string {
 	return str
 }
 
+type Stmt interface {
+	accept(v StmtVisitor)
+}
+
+type ExpressionStmt struct {
+	expr Expr
+}
+
+func (e ExpressionStmt) accept(v StmtVisitor) {
+	v.visitExpressionStmt(e)
+}
+
+type PrintStmt struct {
+	expr Expr
+}
+
+func (p PrintStmt) accept(v StmtVisitor) {
+	v.visitPrintStmt(p)
+}
+
+type StmtVisitor interface {
+	visitExpressionStmt(expr ExpressionStmt)
+	visitPrintStmt(expr PrintStmt)
+}
+
 /**
 Parser grammar:
 
+	program    => statement* EOF
+  statement  => exprStmt | printStmt
+	exprStmt   => series ";"
+	printStmt  => "print" series ";"
 	series     => ternary ( "," ternary )*
 	ternary    => expression ( "?" ternary ":" ternary )*
 	expression => equality
@@ -513,12 +555,31 @@ type Parser struct {
 	current int
 }
 
-func (p Parser) parse() (expr Expr) {
-	defer func() {
-		recover()
-	}()
+func (p *Parser) parse() []Stmt {
+	var statements []Stmt
+	for !p.isAtEnd() {
+		statements = append(statements, p.statement())
+	}
+	return statements
+}
 
-	return p.series()
+func (p *Parser) statement() Stmt {
+	if p.match(tokenPrint) {
+		return p.printStatement()
+	}
+	return p.expressionStatement()
+}
+
+func (p *Parser) printStatement() Stmt {
+	expr := p.series()
+	p.consume(tokenSemicolon, "Expect ';' after value")
+	return PrintStmt{expr}
+}
+
+func (p *Parser) expressionStatement() Stmt {
+	expr := p.series()
+	p.consume(tokenSemicolon, "Expect ';' after value")
+	return ExpressionStmt{expr}
 }
 
 func (p *Parser) series() Expr {
@@ -607,6 +668,14 @@ func (p *Parser) unary() Expr {
 	return p.primary()
 }
 
+type parseError struct {
+	msg string
+}
+
+func (p parseError) Error() string {
+	return p.msg
+}
+
 func (p *Parser) primary() Expr {
 	switch {
 	case p.match(tokenFalse):
@@ -636,10 +705,10 @@ func (p *Parser) consume(tokenType TokenType, message string) Token {
 
 func (p *Parser) error(token Token, message string) error {
 	reportTokenErr(token, message)
-	return errors.New("parse error")
+	return parseError{}
 }
 
-func (p Parser) synchronize() {
+func (p *Parser) synchronize() {
 	p.advance()
 	for !p.isAtEnd() {
 		if p.previous().tokenType == tokenSemicolon {
@@ -666,7 +735,7 @@ func (p *Parser) match(types ...TokenType) bool {
 	return false
 }
 
-func (p Parser) check(tokenType TokenType) bool {
+func (p *Parser) check(tokenType TokenType) bool {
 	if p.isAtEnd() {
 		return false
 	}
@@ -693,4 +762,142 @@ func (p *Parser) previous() Token {
 	return p.tokens[p.current-1]
 }
 
-// TODO: Implement comma operator
+type Interpreter struct{}
+
+func (in Interpreter) visitExpressionStmt(statement ExpressionStmt) {
+	in.evaluate(statement.expr)
+}
+
+func (in Interpreter) visitPrintStmt(statement PrintStmt) {
+	value := in.evaluate(statement.expr)
+	fmt.Println(in.stringify(value))
+}
+
+func (in Interpreter) interpret(statements []Stmt) {
+	defer func() {
+		if err := recover(); err != nil {
+			if e, ok := err.(runtimeError); ok {
+				reportRuntimeErr(e)
+			}
+		}
+	}()
+
+	for _, statement := range statements {
+		in.execute(statement)
+	}
+}
+
+func (in Interpreter) execute(statement Stmt) {
+	statement.accept(in)
+}
+
+func (in Interpreter) evaluate(expr Expr) interface{} {
+	return expr.accept(in)
+}
+
+func (in Interpreter) visitBinaryExpr(expr BinaryExpr) interface{} {
+	left := in.evaluate(expr.left)
+	right := in.evaluate(expr.right)
+
+	switch expr.operator.tokenType {
+	case tokenPlus:
+		_, leftIsFloat := left.(float64)
+		_, rightIsFloat := right.(float64)
+		if leftIsFloat && rightIsFloat {
+			return left.(float64) + right.(float64)
+		}
+		_, leftIsString := left.(string)
+		_, rightIsString := right.(string)
+		if leftIsString && rightIsString {
+			return left.(string) + right.(string)
+		}
+		panic(runtimeError{expr.operator, "Operands must be two numbers or two strings"})
+	case tokenMinus:
+		in.checkNumberOperands(expr.operator, left, right)
+		return left.(float64) - right.(float64)
+	case tokenSlash:
+		in.checkNumberOperands(expr.operator, left, right)
+		return left.(float64) / right.(float64)
+	case tokenStar:
+		in.checkNumberOperands(expr.operator, left, right)
+		return left.(float64) * right.(float64)
+	// comparison
+	case tokenGreater:
+		in.checkNumberOperands(expr.operator, left, right)
+		return left.(float64) > right.(float64)
+	case tokenGreaterEqual:
+		in.checkNumberOperands(expr.operator, left, right)
+		return left.(float64) >= right.(float64)
+	case tokenLess:
+		in.checkNumberOperands(expr.operator, left, right)
+		return left.(float64) < right.(float64)
+	case tokenLessEqual:
+		in.checkNumberOperands(expr.operator, left, right)
+		return left.(float64) <= right.(float64)
+	case tokenEqual:
+		return left == right
+	case tokenBangEqual:
+		return left != right
+	case tokenComma:
+		return right
+	}
+	return nil
+}
+
+func (in Interpreter) visitGroupingExpr(expr GroupingExpr) interface{} {
+	return in.evaluate(expr.expression)
+}
+
+func (in Interpreter) visitLiteralExpr(expr LiteralExpr) interface{} {
+	return expr.value
+}
+
+func (in Interpreter) visitUnaryExpr(expr UnaryExpr) interface{} {
+	right := in.evaluate(expr.right)
+	switch expr.operator.tokenType {
+	case tokenBang:
+		return !in.isTruthy(right)
+	case tokenMinus:
+		in.checkNumberOperand(expr.operator, right)
+		return -right.(float64)
+	}
+	return nil
+}
+
+func (in Interpreter) visitTernaryExpr(expr TernaryExpr) interface{} {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (in Interpreter) isTruthy(val interface{}) bool {
+	if val == nil {
+		return false
+	}
+	if v, ok := val.(bool); ok {
+		return v
+	}
+	return true
+}
+
+func (in Interpreter) checkNumberOperand(operator Token, operand interface{}) {
+	if _, ok := operand.(float64); ok {
+		return
+	}
+	panic(runtimeError{operator, "Operand must be a number"})
+}
+
+func (in Interpreter) checkNumberOperands(operator Token, left interface{}, right interface{}) {
+	if _, ok := left.(float64); ok {
+		if _, ok = right.(float64); ok {
+			return
+		}
+	}
+	panic(runtimeError{operator, "Operands must be number"})
+}
+
+func (in Interpreter) stringify(value interface{}) string {
+	if value == nil {
+		return "nil"
+	}
+	return fmt.Sprint(value)
+}
