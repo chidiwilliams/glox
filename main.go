@@ -10,11 +10,11 @@ import (
 	"strconv"
 )
 
-type TokenType uint8
+type tokenType uint8
 
 const (
 	// single-character tokens
-	tokenLeftParen TokenType = iota
+	tokenLeftParen tokenType = iota
 	tokenRightParen
 	tokenLeftBrace
 	tokenRightBrace
@@ -69,7 +69,7 @@ var (
 	hadRuntimeError bool
 )
 
-var interpreter = Interpreter{}
+var interp = interpreter{}
 
 func main() {
 	var filePath string
@@ -85,14 +85,14 @@ func main() {
 }
 
 func runPrompt() {
-	scanner := bufio.NewScanner(os.Stdin)
+	scannr := bufio.NewScanner(os.Stdin)
 	for {
 		fmt.Print("> ")
-		if !scanner.Scan() {
+		if !scannr.Scan() {
 			break
 		}
 
-		line := scanner.Text()
+		line := scannr.Text()
 		run(line)
 		hadError = false
 	}
@@ -114,26 +114,26 @@ func runFile(path string) {
 }
 
 func run(source string) {
-	scanner := Scanner{source: source}
-	tokens := scanner.scanTokens()
+	scannr := scanner{source: source}
+	tokens := scannr.scanTokens()
 
-	parser := Parser{tokens: tokens}
-	statements := parser.parse()
+	parsr := parser{tokens: tokens}
+	statements := parsr.parse()
 
 	if hadError {
 		return
 	}
 
-	interpreter.interpret(statements)
+	interp.interpret(statements)
 }
 
 // TODO: Fix these errors. See Lox.error, p91
 
-func reportTokenErr(token Token, message string) {
-	if token.tokenType == tokenEof {
-		report(token.Line, " at end", message)
+func reportTokenErr(token token, message string) {
+	if token.tknType == tokenEof {
+		report(token.line, " at end", message)
 	} else {
-		report(token.Line, " at '"+token.Lexeme+"'", message)
+		report(token.line, " at '"+token.lexeme+"'", message)
 	}
 }
 
@@ -147,12 +147,12 @@ func report(line int, where string, message string) {
 }
 
 type runtimeError struct {
-	token Token
+	token token
 	msg   string
 }
 
 func (r runtimeError) Error() string {
-	return fmt.Sprintf("%s\n[line %d]", r.msg, r.token.Line)
+	return fmt.Sprintf("%s\n[line %d]", r.msg, r.token.line)
 }
 
 func reportRuntimeErr(err error) {
@@ -160,37 +160,37 @@ func reportRuntimeErr(err error) {
 	hadRuntimeError = true
 }
 
-type Token struct {
-	tokenType TokenType
-	Lexeme    string
-	Literal   interface{}
-	Line      int
+type token struct {
+	tknType tokenType
+	lexeme  string
+	literal interface{}
+	line    int
 }
 
-func (t Token) String() string {
-	return fmt.Sprintf("%d %s %s", t.tokenType, t.Lexeme, t.Literal)
+func (t token) String() string {
+	return fmt.Sprintf("%d %s %s", t.tknType, t.lexeme, t.literal)
 }
 
-type Scanner struct {
+type scanner struct {
 	start   int
 	current int
 	line    int
 	source  string
-	tokens  []Token
+	tokens  []token
 }
 
-func (s *Scanner) scanTokens() []Token {
+func (s *scanner) scanTokens() []token {
 	for !s.isAtEnd() {
 		// we're at the beginning of the next lexeme
 		s.start = s.current
 		s.scanToken()
 	}
 
-	s.tokens = append(s.tokens, Token{tokenEof, "", nil, s.line})
+	s.tokens = append(s.tokens, token{tokenEof, "", nil, s.line})
 	return s.tokens
 }
 
-func (s *Scanner) scanToken() {
+func (s *scanner) scanToken() {
 	char := s.advance()
 	switch char {
 	case '(':
@@ -220,7 +220,7 @@ func (s *Scanner) scanToken() {
 
 	// with look-ahead
 	case '!':
-		var nextToken TokenType
+		var nextToken tokenType
 		if s.match('=') {
 			nextToken = tokenBangEqual
 		} else {
@@ -228,7 +228,7 @@ func (s *Scanner) scanToken() {
 		}
 		s.addToken(nextToken)
 	case '=':
-		var nextToken TokenType
+		var nextToken tokenType
 		if s.match('=') {
 			nextToken = tokenEqualEqual
 		} else {
@@ -236,7 +236,7 @@ func (s *Scanner) scanToken() {
 		}
 		s.addToken(nextToken)
 	case '<':
-		var nextToken TokenType
+		var nextToken tokenType
 		if s.match('=') {
 			nextToken = tokenLessEqual
 		} else {
@@ -244,7 +244,7 @@ func (s *Scanner) scanToken() {
 		}
 		s.addToken(nextToken)
 	case '>':
-		var nextToken TokenType
+		var nextToken tokenType
 		if s.match('=') {
 			nextToken = tokenGreaterEqual
 		} else {
@@ -282,26 +282,26 @@ func (s *Scanner) scanToken() {
 	}
 }
 
-func (s *Scanner) isAtEnd() bool {
+func (s *scanner) isAtEnd() bool {
 	return s.current >= len(s.source)
 }
 
-func (s *Scanner) advance() rune {
+func (s *scanner) advance() rune {
 	curr := rune(s.source[s.current])
 	s.current++
 	return curr
 }
 
-func (s *Scanner) addToken(tokenType TokenType) {
-	s.addTokenWithLiteral(tokenType, nil)
+func (s *scanner) addToken(tknType tokenType) {
+	s.addTokenWithLiteral(tknType, nil)
 }
 
-func (s *Scanner) addTokenWithLiteral(tokenType TokenType, literal interface{}) {
+func (s *scanner) addTokenWithLiteral(tknType tokenType, literal interface{}) {
 	text := s.source[s.start:s.current]
-	s.tokens = append(s.tokens, Token{tokenType, text, literal, s.line})
+	s.tokens = append(s.tokens, token{tknType, text, literal, s.line})
 }
 
-func (s *Scanner) match(expected rune) bool {
+func (s *scanner) match(expected rune) bool {
 	if s.isAtEnd() {
 		return false
 	}
@@ -314,7 +314,7 @@ func (s *Scanner) match(expected rune) bool {
 	return true
 }
 
-func (s *Scanner) string() {
+func (s *scanner) string() {
 	for s.peek() != '"' && !s.isAtEnd() {
 		if s.peek() == '\n' {
 			s.line++
@@ -333,11 +333,11 @@ func (s *Scanner) string() {
 	s.addTokenWithLiteral(tokenString, value)
 }
 
-func (s *Scanner) isDigit(r rune) bool {
+func (s *scanner) isDigit(r rune) bool {
 	return r >= '0' && r <= '9'
 }
 
-func (s *Scanner) number() {
+func (s *scanner) number() {
 	for s.isDigit(s.peek()) {
 		s.advance()
 	}
@@ -354,25 +354,25 @@ func (s *Scanner) number() {
 	s.addTokenWithLiteral(tokenNumber, val)
 }
 
-func (s *Scanner) peek() rune {
+func (s *scanner) peek() rune {
 	if s.isAtEnd() {
 		return '\000'
 	}
 	return rune(s.source[s.current])
 }
 
-func (s *Scanner) peekNext() rune {
+func (s *scanner) peekNext() rune {
 	if s.current+1 >= len(s.source) {
 		return '\000'
 	}
 	return rune(s.source[s.current+1])
 }
 
-func (s *Scanner) isAlpha(char rune) bool {
+func (s *scanner) isAlpha(char rune) bool {
 	return (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char == '_')
 }
 
-var keywords = map[string]TokenType{
+var keywords = map[string]tokenType{
 	"and":    tokenAnd,
 	"class":  tokenClass,
 	"else":   tokenElse,
@@ -391,7 +391,7 @@ var keywords = map[string]TokenType{
 	"while":  tokenWhile,
 }
 
-func (s *Scanner) identifier() {
+func (s *scanner) identifier() {
 	for s.isAlphaNumeric(s.peek()) {
 		s.advance()
 	}
@@ -404,29 +404,37 @@ func (s *Scanner) identifier() {
 	s.addToken(tknType)
 }
 
-func (s *Scanner) isAlphaNumeric(char rune) bool {
+func (s *scanner) isAlphaNumeric(char rune) bool {
 	return s.isAlpha(char) || s.isDigit(char)
 }
 
-type AstPrinter struct{}
+type astPrinter struct{}
 
-func (a AstPrinter) visitTernaryExpr(expr TernaryExpr) interface{} {
-	return a.Parenthesize("?:", expr.cond, expr.left, expr.right)
+func (a astPrinter) visitAssignExpr(expr assignExpr) interface{} {
+	return a.parenthesize("= "+expr.name.lexeme, expr.value)
 }
 
-func (a AstPrinter) Print(expr Expr) string {
+func (a astPrinter) print(expr expr) string {
 	return expr.accept(a).(string)
 }
 
-func (a AstPrinter) visitBinaryExpr(expr BinaryExpr) interface{} {
-	return a.Parenthesize(expr.operator.Lexeme, expr.left, expr.right)
+func (a astPrinter) visitVariableExpr(expr variableExpr) interface{} {
+	return expr.name.lexeme
 }
 
-func (a AstPrinter) visitGroupingExpr(expr GroupingExpr) interface{} {
-	return a.Parenthesize("group", expr.expression)
+func (a astPrinter) visitTernaryExpr(expr ternaryExpr) interface{} {
+	return a.parenthesize("?:", expr.cond, expr.left, expr.right)
 }
 
-func (a AstPrinter) visitLiteralExpr(expr LiteralExpr) interface{} {
+func (a astPrinter) visitBinaryExpr(expr binaryExpr) interface{} {
+	return a.parenthesize(expr.operator.lexeme, expr.left, expr.right)
+}
+
+func (a astPrinter) visitGroupingExpr(expr groupingExpr) interface{} {
+	return a.parenthesize("group", expr.expression)
+}
+
+func (a astPrinter) visitLiteralExpr(expr literalExpr) interface{} {
 	if expr.value == nil {
 		return "nil"
 	}
@@ -434,16 +442,16 @@ func (a AstPrinter) visitLiteralExpr(expr LiteralExpr) interface{} {
 	return fmt.Sprint(expr.value)
 }
 
-func (a AstPrinter) visitUnaryExpr(expr UnaryExpr) interface{} {
-	return a.Parenthesize(expr.operator.Lexeme, expr.right)
+func (a astPrinter) visitUnaryExpr(expr unaryExpr) interface{} {
+	return a.parenthesize(expr.operator.lexeme, expr.right)
 }
 
-func (a AstPrinter) Parenthesize(name string, exprs ...Expr) string {
+func (a astPrinter) parenthesize(name string, exprs ...expr) string {
 	var str string
 
 	str += "(" + name
 	for _, expr := range exprs {
-		str += " " + a.Print(expr)
+		str += " " + a.print(expr)
 	}
 	str += ")"
 
@@ -455,135 +463,167 @@ Parser grammar:
 
 	program     => declaration* EOF
 	declaration => varDecl | statement
-	varDecl     => "var" IDENTIFIER ( "=" series )? ";"
+	varDecl     => "var" IDENTIFIER ( "=" expression )? ";"
 	statement   => exprStmt | printStmt
-	exprStmt    => series ";"
-	printStmt   => "print" series ";"
+	exprStmt    => expression ";"
+	printStmt   => "print" expression ";"
+	expression  => assignment
+	assignment  => IDENTIFIER "=" assignment | series
 	series      => ternary ( "," ternary )*
 	ternary     => expression ( "?" ternary ":" ternary )*
-	expression  => equality
 	equality    => comparison ( ( "!=" | "==" ) comparison )*
 	comparison  => term ( ( ">" | ">=" | "<" | "<=" ) term )*
 	term        => factor ( ( "+" | "-" ) factor )*
 	factor      => unary ( ( "/" | "*" ) unary )*
 	unary       => ( "!" | "-" ) unary | primary
-	primary     => NUMBER | STRING | "true" | "false" | "nil" | "(" series ")" | IDENTIFIER
+	primary     => NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" | IDENTIFIER
 
 */
 
-type Parser struct {
-	tokens  []Token
+type parser struct {
+	tokens  []token
 	current int
 }
 
-func (p *Parser) parse() []Stmt {
-	var statements []Stmt
+func (p *parser) parse() []stmt {
+	var statements []stmt
 	for !p.isAtEnd() {
-		statements = append(statements, p.statement())
+		statements = append(statements, p.declaration())
 	}
 	return statements
 }
 
-func (p *Parser) statement() Stmt {
+func (p *parser) declaration() stmt {
+	if p.match(tokenVar) {
+		return p.varDeclaration()
+	}
+	return p.statement()
+}
+
+func (p *parser) varDeclaration() stmt {
+	name := p.consume(tokenIdentifier, "Expect variable name")
+	var initializer expr
+	if p.match(tokenEqual) {
+		initializer = p.expression()
+	}
+	p.consume(tokenSemicolon, "Expect ';' after variable declaration")
+	return varStmt{name, initializer}
+}
+
+func (p *parser) statement() stmt {
 	if p.match(tokenPrint) {
 		return p.printStatement()
 	}
 	return p.expressionStatement()
 }
 
-func (p *Parser) printStatement() Stmt {
-	expr := p.series()
+func (p *parser) printStatement() stmt {
+	exp := p.expression()
 	p.consume(tokenSemicolon, "Expect ';' after value")
-	return PrintStmt{expr}
+	return printStmt{exp}
 }
 
-func (p *Parser) expressionStatement() Stmt {
-	expr := p.series()
+func (p *parser) expressionStatement() stmt {
+	exp := p.expression()
 	p.consume(tokenSemicolon, "Expect ';' after value")
-	return ExpressionStmt{expr}
+	return expressionStmt{exp}
 }
 
-func (p *Parser) series() Expr {
+func (p *parser) expression() expr {
+	return p.assignment()
+}
+
+func (p *parser) assignment() expr {
+	exp := p.series()
+	if p.match(tokenEqual) {
+		equals := p.previous()
+		if varExpr, ok := exp.(variableExpr); ok {
+			value := p.assignment()
+			return assignExpr{varExpr.name, value}
+		}
+		_ = p.error(equals, "Invalid assignment target.")
+	}
+
+	return exp
+}
+
+func (p *parser) series() expr {
 	expr := p.ternary()
 	for p.match(tokenComma) {
 		operator := p.previous()
 		right := p.ternary()
-		expr = BinaryExpr{expr, operator, right}
+		expr = binaryExpr{expr, operator, right}
 	}
 
 	return expr
 }
 
-func (p *Parser) ternary() Expr {
-	expr := p.expression()
+func (p *parser) ternary() expr {
+	expr := p.equality()
 
 	if p.match(tokenQuestionMark) {
 		cond1 := p.ternary()
 		p.consume(tokenColon, "Expect ':' after conditional.")
 		cond2 := p.ternary()
-		expr = TernaryExpr{expr, cond1, cond2}
+		expr = ternaryExpr{expr, cond1, cond2}
 	}
 
 	return expr
 }
 
-func (p *Parser) expression() Expr {
-	return p.equality()
-}
-
-func (p *Parser) equality() Expr {
+func (p *parser) equality() expr {
 	expr := p.comparison()
 
 	for p.match(tokenBangEqual, tokenEqualEqual) {
 		operator := p.previous()
 		right := p.comparison()
-		expr = BinaryExpr{expr, operator, right}
+		expr = binaryExpr{expr, operator, right}
 	}
 
 	return expr
 }
 
-func (p *Parser) comparison() Expr {
+func (p *parser) comparison() expr {
 	expr := p.term()
 
 	for p.match(tokenGreater, tokenGreaterEqual, tokenLess, tokenLessEqual) {
 		operator := p.previous()
 		right := p.term()
-		expr = BinaryExpr{expr, operator, right}
+		expr = binaryExpr{expr, operator, right}
 	}
 
 	return expr
 }
 
-func (p *Parser) term() Expr {
+func (p *parser) term() expr {
 	expr := p.factor()
 
 	for p.match(tokenMinus, tokenPlus) {
 		operator := p.previous()
 		right := p.factor()
-		expr = BinaryExpr{expr, operator, right}
+		expr = binaryExpr{expr, operator, right}
 	}
 
 	return expr
 }
 
-func (p *Parser) factor() Expr {
+func (p *parser) factor() expr {
 	expr := p.unary()
 
 	for p.match(tokenSlash, tokenStar) {
 		operator := p.previous()
 		right := p.unary()
-		expr = BinaryExpr{expr, operator, right}
+		expr = binaryExpr{expr, operator, right}
 	}
 
 	return expr
 }
 
-func (p *Parser) unary() Expr {
+func (p *parser) unary() expr {
 	if p.match(tokenBang, tokenMinus) {
 		operator := p.previous()
 		right := p.unary()
-		return UnaryExpr{operator, right}
+		return unaryExpr{operator, right}
 	}
 
 	return p.primary()
@@ -597,46 +637,48 @@ func (p parseError) Error() string {
 	return p.msg
 }
 
-func (p *Parser) primary() Expr {
+func (p *parser) primary() expr {
 	switch {
 	case p.match(tokenFalse):
-		return LiteralExpr{false}
+		return literalExpr{false}
 	case p.match(tokenTrue):
-		return LiteralExpr{true}
+		return literalExpr{true}
 	case p.match(tokenNil):
-		return LiteralExpr{nil}
+		return literalExpr{nil}
 	case p.match(tokenNumber, tokenString):
-		return LiteralExpr{p.previous().Literal}
+		return literalExpr{p.previous().literal}
 	case p.match(tokenLeftParen):
-		expr := p.series()
+		exp := p.expression()
 		p.consume(tokenRightParen, "Expect ')' after expression.")
-		return GroupingExpr{expr}
+		return groupingExpr{exp}
+	case p.match(tokenIdentifier):
+		return variableExpr{p.previous()}
 	}
 
 	panic(p.error(p.peek(), "Expect expression."))
 }
 
-func (p *Parser) consume(tokenType TokenType, message string) Token {
-	if p.check(tokenType) {
+func (p *parser) consume(tknType tokenType, message string) token {
+	if p.check(tknType) {
 		return p.advance()
 	}
 
 	panic(p.error(p.peek(), message))
 }
 
-func (p *Parser) error(token Token, message string) error {
+func (p *parser) error(token token, message string) error {
 	reportTokenErr(token, message)
 	return parseError{}
 }
 
-func (p *Parser) synchronize() {
+func (p *parser) synchronize() {
 	p.advance()
 	for !p.isAtEnd() {
-		if p.previous().tokenType == tokenSemicolon {
+		if p.previous().tknType == tokenSemicolon {
 			return
 		}
 
-		switch p.peek().tokenType {
+		switch p.peek().tknType {
 		case tokenClass, tokenFor, tokenFun, tokenIf, tokenPrint, tokenReturn, tokenVar, tokenWhile:
 			return
 		}
@@ -645,9 +687,9 @@ func (p *Parser) synchronize() {
 	}
 }
 
-func (p *Parser) match(types ...TokenType) bool {
-	for _, tokenType := range types {
-		if p.check(tokenType) {
+func (p *parser) match(types ...tokenType) bool {
+	for _, tknType := range types {
+		if p.check(tknType) {
 			p.advance()
 			return true
 		}
@@ -656,47 +698,64 @@ func (p *Parser) match(types ...TokenType) bool {
 	return false
 }
 
-func (p *Parser) check(tokenType TokenType) bool {
+func (p *parser) check(tknType tokenType) bool {
 	if p.isAtEnd() {
 		return false
 	}
 
-	return p.peek().tokenType == tokenType
+	return p.peek().tknType == tknType
 }
 
-func (p *Parser) advance() Token {
+func (p *parser) advance() token {
 	if !p.isAtEnd() {
 		p.current++
 	}
 	return p.previous()
 }
 
-func (p *Parser) isAtEnd() bool {
-	return p.peek().tokenType == tokenEof
+func (p *parser) isAtEnd() bool {
+	return p.peek().tknType == tokenEof
 }
 
-func (p *Parser) peek() Token {
+func (p *parser) peek() token {
 	return p.tokens[p.current]
 }
 
-func (p *Parser) previous() Token {
+func (p *parser) previous() token {
 	return p.tokens[p.current-1]
 }
 
-type Interpreter struct{}
+type interpreter struct {
+	environment environment
+}
 
-func (in Interpreter) visitExpressionStmt(statement ExpressionStmt) interface{} {
-	in.evaluate(statement.expr)
+func (in *interpreter) visitAssignExpr(expr assignExpr) interface{} {
+	val := in.evaluate(expr.value)
+	in.environment.assign(expr.name, val)
+	return val
+}
+
+func (in *interpreter) visitVarStmt(stmt varStmt) interface{} {
+	var val interface{}
+	if stmt.initializer != nil {
+		val = in.evaluate(stmt.initializer)
+	}
+	in.environment.define(stmt.name.lexeme, val)
 	return nil
 }
 
-func (in Interpreter) visitPrintStmt(statement PrintStmt) interface{} {
-	value := in.evaluate(statement.expr)
+func (in *interpreter) visitExpressionStmt(stmt expressionStmt) interface{} {
+	in.evaluate(stmt.expr)
+	return nil
+}
+
+func (in *interpreter) visitPrintStmt(stmt printStmt) interface{} {
+	value := in.evaluate(stmt.expr)
 	fmt.Println(in.stringify(value))
 	return nil
 }
 
-func (in Interpreter) interpret(statements []Stmt) {
+func (in *interpreter) interpret(stmts []stmt) {
 	defer func() {
 		if err := recover(); err != nil {
 			if e, ok := err.(runtimeError); ok {
@@ -706,24 +765,28 @@ func (in Interpreter) interpret(statements []Stmt) {
 		}
 	}()
 
-	for _, statement := range statements {
+	for _, statement := range stmts {
 		in.execute(statement)
 	}
 }
 
-func (in Interpreter) execute(statement Stmt) {
-	statement.accept(in)
+func (in *interpreter) execute(stmt stmt) {
+	stmt.accept(in)
 }
 
-func (in Interpreter) evaluate(expr Expr) interface{} {
+func (in *interpreter) evaluate(expr expr) interface{} {
 	return expr.accept(in)
 }
 
-func (in Interpreter) visitBinaryExpr(expr BinaryExpr) interface{} {
+func (in *interpreter) visitVariableExpr(expr variableExpr) interface{} {
+	return in.environment.get(expr.name)
+}
+
+func (in *interpreter) visitBinaryExpr(expr binaryExpr) interface{} {
 	left := in.evaluate(expr.left)
 	right := in.evaluate(expr.right)
 
-	switch expr.operator.tokenType {
+	switch expr.operator.tknType {
 	case tokenPlus:
 		_, leftIsFloat := left.(float64)
 		_, rightIsFloat := right.(float64)
@@ -768,17 +831,17 @@ func (in Interpreter) visitBinaryExpr(expr BinaryExpr) interface{} {
 	return nil
 }
 
-func (in Interpreter) visitGroupingExpr(expr GroupingExpr) interface{} {
+func (in *interpreter) visitGroupingExpr(expr groupingExpr) interface{} {
 	return in.evaluate(expr.expression)
 }
 
-func (in Interpreter) visitLiteralExpr(expr LiteralExpr) interface{} {
+func (in *interpreter) visitLiteralExpr(expr literalExpr) interface{} {
 	return expr.value
 }
 
-func (in Interpreter) visitUnaryExpr(expr UnaryExpr) interface{} {
+func (in *interpreter) visitUnaryExpr(expr unaryExpr) interface{} {
 	right := in.evaluate(expr.right)
-	switch expr.operator.tokenType {
+	switch expr.operator.tknType {
 	case tokenBang:
 		return !in.isTruthy(right)
 	case tokenMinus:
@@ -788,7 +851,7 @@ func (in Interpreter) visitUnaryExpr(expr UnaryExpr) interface{} {
 	return nil
 }
 
-func (in Interpreter) visitTernaryExpr(expr TernaryExpr) interface{} {
+func (in *interpreter) visitTernaryExpr(expr ternaryExpr) interface{} {
 	cond := in.evaluate(expr.cond)
 	if in.isTruthy(cond) {
 		return in.evaluate(expr.left)
@@ -796,7 +859,7 @@ func (in Interpreter) visitTernaryExpr(expr TernaryExpr) interface{} {
 	return in.evaluate(expr.right)
 }
 
-func (in Interpreter) isTruthy(val interface{}) bool {
+func (in *interpreter) isTruthy(val interface{}) bool {
 	if val == nil {
 		return false
 	}
@@ -806,14 +869,14 @@ func (in Interpreter) isTruthy(val interface{}) bool {
 	return true
 }
 
-func (in Interpreter) checkNumberOperand(operator Token, operand interface{}) {
+func (in *interpreter) checkNumberOperand(operator token, operand interface{}) {
 	if _, ok := operand.(float64); ok {
 		return
 	}
 	panic(runtimeError{operator, "Operand must be a number"})
 }
 
-func (in Interpreter) checkNumberOperands(operator Token, left interface{}, right interface{}) {
+func (in *interpreter) checkNumberOperands(operator token, left interface{}, right interface{}) {
 	if _, ok := left.(float64); ok {
 		if _, ok = right.(float64); ok {
 			return
@@ -822,9 +885,35 @@ func (in Interpreter) checkNumberOperands(operator Token, left interface{}, righ
 	panic(runtimeError{operator, "Operands must be number"})
 }
 
-func (in Interpreter) stringify(value interface{}) string {
+func (in *interpreter) stringify(value interface{}) string {
 	if value == nil {
 		return "nil"
 	}
 	return fmt.Sprint(value)
+}
+
+type environment struct {
+	values map[string]interface{}
+}
+
+func (e *environment) define(name string, value interface{}) {
+	if e.values == nil {
+		e.values = make(map[string]interface{})
+	}
+	e.values[name] = value
+}
+
+func (e environment) get(name token) interface{} {
+	if v, ok := e.values[name.lexeme]; ok {
+		return v
+	}
+	panic(runtimeError{name, fmt.Sprintf("Undefined variable '%s'", name.lexeme)})
+}
+
+func (e *environment) assign(name token, value interface{}) {
+	if _, ok := e.values[name.lexeme]; ok {
+		e.define(name.lexeme, value)
+		return
+	}
+	panic(runtimeError{name, fmt.Sprintf("Undefined variable '%s'", name.lexeme)})
 }

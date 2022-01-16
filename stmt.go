@@ -1,26 +1,36 @@
 package main
 
-type Stmt interface {
-	accept(visitor StmtVisitor) interface{}
+type stmt interface {
+	accept(visitor stmtVisitor) interface{}
 }
 
-type ExpressionStmt struct {
-	expr Expr
+type expressionStmt struct {
+	expr expr
 }
 
-func (b ExpressionStmt) accept(visitor StmtVisitor) interface{} {
+func (b expressionStmt) accept(visitor stmtVisitor) interface{} {
 	return visitor.visitExpressionStmt(b)
 }
 
-type PrintStmt struct {
-	expr Expr
+type printStmt struct {
+	expr expr
 }
 
-func (b PrintStmt) accept(visitor StmtVisitor) interface{} {
+func (b printStmt) accept(visitor stmtVisitor) interface{} {
 	return visitor.visitPrintStmt(b)
 }
 
-type StmtVisitor interface {
-	visitExpressionStmt(expr ExpressionStmt) interface{}
-	visitPrintStmt(expr PrintStmt) interface{}
+type varStmt struct {
+	name        token
+	initializer expr
+}
+
+func (b varStmt) accept(visitor stmtVisitor) interface{} {
+	return visitor.visitVarStmt(b)
+}
+
+type stmtVisitor interface {
+	visitExpressionStmt(expr expressionStmt) interface{}
+	visitPrintStmt(expr printStmt) interface{}
+	visitVarStmt(expr varStmt) interface{}
 }

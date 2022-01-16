@@ -1,58 +1,77 @@
 package main
 
-type Expr interface {
-	accept(visitor ExprVisitor) interface{}
+type expr interface {
+	accept(visitor exprVisitor) interface{}
 }
 
-type UnaryExpr struct {
-	operator Token
-	right    Expr
+type assignExpr struct {
+	name  token
+	value expr
 }
 
-func (b UnaryExpr) accept(visitor ExprVisitor) interface{} {
+func (b assignExpr) accept(visitor exprVisitor) interface{} {
+	return visitor.visitAssignExpr(b)
+}
+
+type unaryExpr struct {
+	operator token
+	right    expr
+}
+
+func (b unaryExpr) accept(visitor exprVisitor) interface{} {
 	return visitor.visitUnaryExpr(b)
 }
 
-type BinaryExpr struct {
-	left     Expr
-	operator Token
-	right    Expr
+type binaryExpr struct {
+	left     expr
+	operator token
+	right    expr
 }
 
-func (b BinaryExpr) accept(visitor ExprVisitor) interface{} {
+func (b binaryExpr) accept(visitor exprVisitor) interface{} {
 	return visitor.visitBinaryExpr(b)
 }
 
-type TernaryExpr struct {
-	cond  Expr
-	left  Expr
-	right Expr
+type ternaryExpr struct {
+	cond  expr
+	left  expr
+	right expr
 }
 
-func (b TernaryExpr) accept(visitor ExprVisitor) interface{} {
+func (b ternaryExpr) accept(visitor exprVisitor) interface{} {
 	return visitor.visitTernaryExpr(b)
 }
 
-type GroupingExpr struct {
-	expression Expr
+type groupingExpr struct {
+	expression expr
 }
 
-func (b GroupingExpr) accept(visitor ExprVisitor) interface{} {
+func (b groupingExpr) accept(visitor exprVisitor) interface{} {
 	return visitor.visitGroupingExpr(b)
 }
 
-type LiteralExpr struct {
+type literalExpr struct {
 	value interface{}
 }
 
-func (b LiteralExpr) accept(visitor ExprVisitor) interface{} {
+func (b literalExpr) accept(visitor exprVisitor) interface{} {
 	return visitor.visitLiteralExpr(b)
 }
 
-type ExprVisitor interface {
-	visitUnaryExpr(expr UnaryExpr) interface{}
-	visitBinaryExpr(expr BinaryExpr) interface{}
-	visitTernaryExpr(expr TernaryExpr) interface{}
-	visitGroupingExpr(expr GroupingExpr) interface{}
-	visitLiteralExpr(expr LiteralExpr) interface{}
+type variableExpr struct {
+	name token
+}
+
+func (b variableExpr) accept(visitor exprVisitor) interface{} {
+	return visitor.visitVariableExpr(b)
+}
+
+type exprVisitor interface {
+	visitAssignExpr(expr assignExpr) interface{}
+	visitUnaryExpr(expr unaryExpr) interface{}
+	visitBinaryExpr(expr binaryExpr) interface{}
+	visitTernaryExpr(expr ternaryExpr) interface{}
+	visitGroupingExpr(expr groupingExpr) interface{}
+	visitLiteralExpr(expr literalExpr) interface{}
+	visitVariableExpr(expr variableExpr) interface{}
 }
