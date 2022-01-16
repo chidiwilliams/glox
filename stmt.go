@@ -4,6 +4,14 @@ type stmt interface {
 	accept(visitor stmtVisitor) interface{}
 }
 
+type blockStmt struct {
+	statements []stmt
+}
+
+func (b blockStmt) accept(visitor stmtVisitor) interface{} {
+	return visitor.visitBlockStmt(b)
+}
+
 type expressionStmt struct {
 	expr expr
 }
@@ -30,6 +38,7 @@ func (b varStmt) accept(visitor stmtVisitor) interface{} {
 }
 
 type stmtVisitor interface {
+	visitBlockStmt(expr blockStmt) interface{}
 	visitExpressionStmt(expr expressionStmt) interface{}
 	visitPrintStmt(expr printStmt) interface{}
 	visitVarStmt(expr varStmt) interface{}

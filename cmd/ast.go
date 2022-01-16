@@ -20,6 +20,7 @@ func main() {
 	})
 
 	writeAst("stmt", []string{
+		"block      : statements []stmt",
 		"expression : expr expr",
 		"print      : expr expr",
 		"var        : name token, initializer expr",

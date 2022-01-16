@@ -69,7 +69,7 @@ var (
 	hadRuntimeError bool
 )
 
-var interp = interpreter{}
+var interp = interpreter{&environment{}}
 
 func main() {
 	var filePath string
@@ -464,9 +464,10 @@ Parser grammar:
 	program     => declaration* EOF
 	declaration => varDecl | statement
 	varDecl     => "var" IDENTIFIER ( "=" expression )? ";"
-	statement   => exprStmt | printStmt
+	statement   => exprStmt | printStmt | block
 	exprStmt    => expression ";"
 	printStmt   => "print" expression ";"
+	block       => "{" declaration* "}" ;
 	expression  => assignment
 	assignment  => IDENTIFIER "=" assignment | series
 	series      => ternary ( "," ternary )*
@@ -514,6 +515,9 @@ func (p *parser) statement() stmt {
 	if p.match(tokenPrint) {
 		return p.printStatement()
 	}
+	if p.match(tokenLeftBrace) {
+		return blockStmt{p.block()}
+	}
 	return p.expressionStatement()
 }
 
@@ -521,6 +525,15 @@ func (p *parser) printStatement() stmt {
 	exp := p.expression()
 	p.consume(tokenSemicolon, "Expect ';' after value")
 	return printStmt{exp}
+}
+
+func (p *parser) block() []stmt {
+	var statements []stmt
+	for !p.check(tokenRightBrace) && !p.isAtEnd() {
+		statements = append(statements, p.declaration())
+	}
+	p.consume(tokenRightBrace, "Expect '}' after block.")
+	return statements
 }
 
 func (p *parser) expressionStatement() stmt {
@@ -726,7 +739,12 @@ func (p *parser) previous() token {
 }
 
 type interpreter struct {
-	environment environment
+	environment *environment
+}
+
+func (in *interpreter) visitBlockStmt(stmt blockStmt) interface{} {
+	in.executeBlock(stmt.statements, &environment{enclosing: in.environment})
+	return nil
 }
 
 func (in *interpreter) visitAssignExpr(expr assignExpr) interface{} {
@@ -892,8 +910,19 @@ func (in *interpreter) stringify(value interface{}) string {
 	return fmt.Sprint(value)
 }
 
+func (in *interpreter) executeBlock(statements []stmt, env *environment) {
+	previous := in.environment
+	defer func() { in.environment = previous }()
+
+	in.environment = env
+	for _, statement := range statements {
+		in.execute(statement)
+	}
+}
+
 type environment struct {
-	values map[string]interface{}
+	enclosing *environment
+	values    map[string]interface{}
 }
 
 func (e *environment) define(name string, value interface{}) {
@@ -907,12 +936,20 @@ func (e environment) get(name token) interface{} {
 	if v, ok := e.values[name.lexeme]; ok {
 		return v
 	}
+	if e.enclosing != nil {
+		return e.enclosing.get(name)
+	}
+
 	panic(runtimeError{name, fmt.Sprintf("Undefined variable '%s'", name.lexeme)})
 }
 
 func (e *environment) assign(name token, value interface{}) {
 	if _, ok := e.values[name.lexeme]; ok {
 		e.define(name.lexeme, value)
+		return
+	}
+	if e.enclosing != nil {
+		e.enclosing.assign(name, value)
 		return
 	}
 	panic(runtimeError{name, fmt.Sprintf("Undefined variable '%s'", name.lexeme)})
