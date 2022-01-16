@@ -124,7 +124,8 @@ func run(source string) {
 		return
 	}
 
-	interp.interpret(statements)
+	result := interp.interpret(statements)
+	fmt.Println(result)
 }
 
 // TODO: Fix these errors. See Lox.error, p91
@@ -763,8 +764,7 @@ func (in *interpreter) visitVarStmt(stmt varStmt) interface{} {
 }
 
 func (in *interpreter) visitExpressionStmt(stmt expressionStmt) interface{} {
-	in.evaluate(stmt.expr)
-	return nil
+	return in.evaluate(stmt.expr)
 }
 
 func (in *interpreter) visitPrintStmt(stmt printStmt) interface{} {
@@ -773,7 +773,7 @@ func (in *interpreter) visitPrintStmt(stmt printStmt) interface{} {
 	return nil
 }
 
-func (in *interpreter) interpret(stmts []stmt) {
+func (in *interpreter) interpret(stmts []stmt) interface{} {
 	defer func() {
 		if err := recover(); err != nil {
 			if e, ok := err.(runtimeError); ok {
@@ -783,13 +783,16 @@ func (in *interpreter) interpret(stmts []stmt) {
 		}
 	}()
 
+	var result interface{}
 	for _, statement := range stmts {
-		in.execute(statement)
+		result = in.execute(statement)
 	}
+
+	return result
 }
 
-func (in *interpreter) execute(stmt stmt) {
-	stmt.accept(in)
+func (in *interpreter) execute(stmt stmt) interface{} {
+	return stmt.accept(in)
 }
 
 func (in *interpreter) evaluate(expr expr) interface{} {
