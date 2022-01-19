@@ -45,6 +45,16 @@ func (p *parser) parse() []stmt {
 }
 
 func (p *parser) declaration() stmt {
+	defer func() {
+		if err := recover(); err != nil {
+			if _, ok := err.(parseError); ok {
+				p.synchronize()
+			} else {
+				panic(err)
+			}
+		}
+	}()
+
 	if p.match(tokenVar) {
 		return p.varDeclaration()
 	}
