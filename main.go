@@ -63,7 +63,10 @@ func run(source string) {
 	tokens := scanner.scanTokens()
 
 	parser := parser{tokens: tokens}
-	statements := parser.parse()
+	statements, err := parser.parse()
+	if err != nil {
+		return
+	}
 
 	if hadError {
 		return

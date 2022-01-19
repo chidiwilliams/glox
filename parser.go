@@ -36,199 +36,297 @@ type parser struct {
 	current int
 }
 
-func (p *parser) parse() []stmt {
+func (p *parser) parse() ([]stmt, error) {
 	var statements []stmt
 	for !p.isAtEnd() {
-		statements = append(statements, p.declaration())
+		decl, err := p.declaration()
+		if err != nil {
+			return nil, err
+		}
+		statements = append(statements, decl)
 	}
-	return statements
+	return statements, nil
 }
 
-func (p *parser) declaration() stmt {
-	defer func() {
-		if err := recover(); err != nil {
-			if _, ok := err.(parseError); ok {
-				p.synchronize()
-			} else {
-				panic(err)
-			}
-		}
-	}()
+func (p *parser) declaration() (stmt, error) {
+	var statement stmt
+	var err error
 
 	if p.match(tokenVar) {
-		return p.varDeclaration()
+		statement, err = p.varDeclaration()
+	} else {
+		statement, err = p.statement()
 	}
-	return p.statement()
+
+	if err != nil {
+		if _, ok := err.(parseError); ok {
+			p.synchronize()
+			return nil, nil
+		} else {
+			return nil, err
+		}
+	}
+
+	return statement, nil
 }
 
-func (p *parser) varDeclaration() stmt {
-	name := p.consume(tokenIdentifier, "Expect variable name")
+func (p *parser) varDeclaration() (stmt, error) {
+	name, err := p.consume(tokenIdentifier, "Expect variable name")
+	if err != nil {
+		return nil, err
+	}
 	var initializer expr
 	if p.match(tokenEqual) {
-		initializer = p.expression()
+		initializer, err = p.expression()
+		if err != nil {
+			return nil, err
+		}
 	}
-	p.consume(tokenSemicolon, "Expect ';' after variable declaration")
-	return varStmt{name, initializer}
+	_, err = p.consume(tokenSemicolon, "Expect ';' after variable declaration")
+	if err != nil {
+		return nil, err
+	}
+	return varStmt{name, initializer}, nil
 }
 
-func (p *parser) statement() stmt {
+func (p *parser) statement() (stmt, error) {
 	if p.match(tokenPrint) {
 		return p.printStatement()
 	}
 	if p.match(tokenLeftBrace) {
-		return blockStmt{p.block()}
+		block, err := p.block()
+		if err != nil {
+			return nil, err
+		}
+		return blockStmt{block}, nil
 	}
 	return p.expressionStatement()
 }
 
-func (p *parser) printStatement() stmt {
-	exp := p.expression()
-	p.consume(tokenSemicolon, "Expect ';' after value")
-	return printStmt{exp}
+func (p *parser) printStatement() (stmt, error) {
+	exp, err := p.expression()
+	if err != nil {
+		return nil, err
+	}
+	_, err = p.consume(tokenSemicolon, "Expect ';' after value")
+	if err != nil {
+		return nil, err
+	}
+	return printStmt{exp}, nil
 }
 
-func (p *parser) block() []stmt {
+func (p *parser) block() ([]stmt, error) {
 	var statements []stmt
 	for !p.check(tokenRightBrace) && !p.isAtEnd() {
-		statements = append(statements, p.declaration())
+		decl, err := p.declaration()
+		if err != nil {
+			return nil, err
+		}
+		statements = append(statements, decl)
 	}
-	p.consume(tokenRightBrace, "Expect '}' after block.")
-	return statements
+	_, err := p.consume(tokenRightBrace, "Expect '}' after block.")
+	if err != nil {
+		return nil, err
+	}
+	return statements, nil
 }
 
-func (p *parser) expressionStatement() stmt {
-	exp := p.expression()
-	p.consume(tokenSemicolon, "Expect ';' after value")
-	return expressionStmt{exp}
+func (p *parser) expressionStatement() (stmt, error) {
+	exp, err := p.expression()
+	if err != nil {
+		return nil, err
+	}
+	_, err = p.consume(tokenSemicolon, "Expect ';' after value")
+	if err != nil {
+		return nil, err
+	}
+	return expressionStmt{exp}, nil
 }
 
-func (p *parser) expression() expr {
+func (p *parser) expression() (expr, error) {
 	return p.assignment()
 }
 
-func (p *parser) assignment() expr {
-	exp := p.series()
+func (p *parser) assignment() (expr, error) {
+	exp, err := p.series()
+	if err != nil {
+		return nil, err
+	}
 	if p.match(tokenEqual) {
 		equals := p.previous()
 		if varExpr, ok := exp.(variableExpr); ok {
-			value := p.assignment()
-			return assignExpr{varExpr.name, value}
+			value, err := p.assignment()
+			if err != nil {
+				return nil, err
+			}
+			return assignExpr{varExpr.name, value}, nil
 		}
 		_ = p.error(equals, "Invalid assignment target.")
 	}
 
-	return exp
+	return exp, nil
 }
 
-func (p *parser) series() expr {
-	expr := p.ternary()
+func (p *parser) series() (expr, error) {
+	expr, err := p.ternary()
+	if err != nil {
+		return nil, err
+	}
 	for p.match(tokenComma) {
 		operator := p.previous()
-		right := p.ternary()
+		right, err := p.ternary()
+		if err != nil {
+			return nil, err
+		}
 		expr = binaryExpr{expr, operator, right}
 	}
 
-	return expr
+	return expr, nil
 }
 
-func (p *parser) ternary() expr {
-	expr := p.equality()
+func (p *parser) ternary() (expr, error) {
+	expr, err := p.equality()
+	if err != nil {
+		return nil, err
+	}
 
 	if p.match(tokenQuestionMark) {
-		cond1 := p.ternary()
-		p.consume(tokenColon, "Expect ':' after conditional.")
-		cond2 := p.ternary()
+		cond1, err := p.ternary()
+		if err != nil {
+			return nil, err
+		}
+		_, err = p.consume(tokenColon, "Expect ':' after conditional.")
+		if err != nil {
+			return nil, err
+		}
+		cond2, err := p.ternary()
+		if err != nil {
+			return nil, err
+		}
 		expr = ternaryExpr{expr, cond1, cond2}
 	}
 
-	return expr
+	return expr, nil
 }
 
-func (p *parser) equality() expr {
-	expr := p.comparison()
+func (p *parser) equality() (expr, error) {
+	expr, err := p.comparison()
+	if err != nil {
+		return nil, err
+	}
 
 	for p.match(tokenBangEqual, tokenEqualEqual) {
 		operator := p.previous()
-		right := p.comparison()
+		right, err := p.comparison()
+		if err != nil {
+			return nil, err
+		}
 		expr = binaryExpr{expr, operator, right}
 	}
 
-	return expr
+	return expr, nil
 }
 
-func (p *parser) comparison() expr {
-	expr := p.term()
+func (p *parser) comparison() (expr, error) {
+	expr, err := p.term()
+	if err != nil {
+		return nil, err
+	}
 
 	for p.match(tokenGreater, tokenGreaterEqual, tokenLess, tokenLessEqual) {
 		operator := p.previous()
-		right := p.term()
+		right, err := p.term()
+		if err != nil {
+			return nil, err
+		}
 		expr = binaryExpr{expr, operator, right}
 	}
 
-	return expr
+	return expr, nil
 }
 
-func (p *parser) term() expr {
-	expr := p.factor()
+func (p *parser) term() (expr, error) {
+	expr, err := p.factor()
+	if err != nil {
+		return nil, err
+	}
 
 	for p.match(tokenMinus, tokenPlus) {
 		operator := p.previous()
-		right := p.factor()
+		right, err := p.factor()
+		if err != nil {
+			return nil, err
+		}
 		expr = binaryExpr{expr, operator, right}
 	}
 
-	return expr
+	return expr, nil
 }
 
-func (p *parser) factor() expr {
-	expr := p.unary()
+func (p *parser) factor() (expr, error) {
+	expr, err := p.unary()
+	if err != nil {
+		return nil, err
+	}
 
 	for p.match(tokenSlash, tokenStar) {
 		operator := p.previous()
-		right := p.unary()
+		right, err := p.unary()
+		if err != nil {
+			return nil, err
+		}
 		expr = binaryExpr{expr, operator, right}
 	}
 
-	return expr
+	return expr, nil
 }
 
-func (p *parser) unary() expr {
+func (p *parser) unary() (expr, error) {
 	if p.match(tokenBang, tokenMinus) {
 		operator := p.previous()
-		right := p.unary()
-		return unaryExpr{operator, right}
+		right, err := p.unary()
+		if err != nil {
+			return nil, err
+		}
+		return unaryExpr{operator, right}, nil
 	}
 
 	return p.primary()
 }
 
-func (p *parser) primary() expr {
+func (p *parser) primary() (expr, error) {
 	switch {
 	case p.match(tokenFalse):
-		return literalExpr{false}
+		return literalExpr{false}, nil
 	case p.match(tokenTrue):
-		return literalExpr{true}
+		return literalExpr{true}, nil
 	case p.match(tokenNil):
-		return literalExpr{nil}
+		return literalExpr{nil}, nil
 	case p.match(tokenNumber, tokenString):
-		return literalExpr{p.previous().literal}
+		return literalExpr{p.previous().literal}, nil
 	case p.match(tokenLeftParen):
-		exp := p.expression()
-		p.consume(tokenRightParen, "Expect ')' after expression.")
-		return groupingExpr{exp}
+		exp, err := p.expression()
+		if err != nil {
+			return nil, err
+		}
+		_, err = p.consume(tokenRightParen, "Expect ')' after expression.")
+		if err != nil {
+			return nil, err
+		}
+		return groupingExpr{exp}, nil
 	case p.match(tokenIdentifier):
-		return variableExpr{p.previous()}
+		return variableExpr{p.previous()}, nil
 	}
 
-	panic(p.error(p.peek(), "Expect expression."))
+	return nil, p.error(p.peek(), "Expect expression.")
 }
 
-func (p *parser) consume(tknType tokenType, message string) token {
+func (p *parser) consume(tknType tokenType, message string) (token, error) {
 	if p.check(tknType) {
-		return p.advance()
+		return p.advance(), nil
 	}
 
-	panic(p.error(p.peek(), message))
+	return token{}, p.error(p.peek(), message)
 }
 
 func (p *parser) error(token token, message string) error {
