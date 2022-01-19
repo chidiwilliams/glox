@@ -1,5 +1,7 @@
 package main
 
+import "glox/ast"
+
 type parseError struct {
 	msg string
 }
@@ -32,19 +34,19 @@ Parser grammar:
 */
 
 type parser struct {
-	tokens  []token
+	tokens  []ast.Token
 	current int
 }
 
-func (p *parser) parse() []stmt {
-	var statements []stmt
+func (p *parser) parse() []ast.Stmt {
+	var statements []ast.Stmt
 	for !p.isAtEnd() {
 		statements = append(statements, p.declaration())
 	}
 	return statements
 }
 
-func (p *parser) declaration() stmt {
+func (p *parser) declaration() ast.Stmt {
 	defer func() {
 		if err := recover(); err != nil {
 			if _, ok := err.(parseError); ok {
@@ -55,64 +57,64 @@ func (p *parser) declaration() stmt {
 		}
 	}()
 
-	if p.match(tokenVar) {
+	if p.match(ast.TokenVar) {
 		return p.varDeclaration()
 	}
 	return p.statement()
 }
 
-func (p *parser) varDeclaration() stmt {
-	name := p.consume(tokenIdentifier, "Expect variable name")
-	var initializer expr
-	if p.match(tokenEqual) {
+func (p *parser) varDeclaration() ast.Stmt {
+	name := p.consume(ast.TokenIdentifier, "Expect variable name")
+	var initializer ast.Expr
+	if p.match(ast.TokenEqual) {
 		initializer = p.expression()
 	}
-	p.consume(tokenSemicolon, "Expect ';' after variable declaration")
-	return varStmt{name, initializer}
+	p.consume(ast.TokenSemicolon, "Expect ';' after variable declaration")
+	return ast.VarStmt{Name: name, Initializer: initializer}
 }
 
-func (p *parser) statement() stmt {
-	if p.match(tokenPrint) {
+func (p *parser) statement() ast.Stmt {
+	if p.match(ast.TokenPrint) {
 		return p.printStatement()
 	}
-	if p.match(tokenLeftBrace) {
-		return blockStmt{p.block()}
+	if p.match(ast.TokenLeftBrace) {
+		return ast.BlockStmt{Statements: p.block()}
 	}
 	return p.expressionStatement()
 }
 
-func (p *parser) printStatement() stmt {
+func (p *parser) printStatement() ast.Stmt {
 	exp := p.expression()
-	p.consume(tokenSemicolon, "Expect ';' after value")
-	return printStmt{exp}
+	p.consume(ast.TokenSemicolon, "Expect ';' after value")
+	return ast.PrintStmt{Expr: exp}
 }
 
-func (p *parser) block() []stmt {
-	var statements []stmt
-	for !p.check(tokenRightBrace) && !p.isAtEnd() {
+func (p *parser) block() []ast.Stmt {
+	var statements []ast.Stmt
+	for !p.check(ast.TokenRightBrace) && !p.isAtEnd() {
 		statements = append(statements, p.declaration())
 	}
-	p.consume(tokenRightBrace, "Expect '}' after block.")
+	p.consume(ast.TokenRightBrace, "Expect '}' after block.")
 	return statements
 }
 
-func (p *parser) expressionStatement() stmt {
+func (p *parser) expressionStatement() ast.Stmt {
 	exp := p.expression()
-	p.consume(tokenSemicolon, "Expect ';' after value")
-	return expressionStmt{exp}
+	p.consume(ast.TokenSemicolon, "Expect ';' after value")
+	return ast.ExpressionStmt{Expr: exp}
 }
 
-func (p *parser) expression() expr {
+func (p *parser) expression() ast.Expr {
 	return p.assignment()
 }
 
-func (p *parser) assignment() expr {
+func (p *parser) assignment() ast.Expr {
 	exp := p.series()
-	if p.match(tokenEqual) {
+	if p.match(ast.TokenEqual) {
 		equals := p.previous()
-		if varExpr, ok := exp.(variableExpr); ok {
+		if varExpr, ok := exp.(ast.VariableExpr); ok {
 			value := p.assignment()
-			return assignExpr{varExpr.name, value}
+			return ast.AssignExpr{Name: varExpr.Name, Value: value}
 		}
 		_ = p.error(equals, "Invalid assignment target.")
 	}
@@ -120,131 +122,131 @@ func (p *parser) assignment() expr {
 	return exp
 }
 
-func (p *parser) series() expr {
+func (p *parser) series() ast.Expr {
 	expr := p.ternary()
-	for p.match(tokenComma) {
+	for p.match(ast.TokenComma) {
 		operator := p.previous()
 		right := p.ternary()
-		expr = binaryExpr{expr, operator, right}
+		expr = ast.BinaryExpr{Left: expr, Operator: operator, Right: right}
 	}
 
 	return expr
 }
 
-func (p *parser) ternary() expr {
+func (p *parser) ternary() ast.Expr {
 	expr := p.equality()
 
-	if p.match(tokenQuestionMark) {
+	if p.match(ast.TokenQuestionMark) {
 		cond1 := p.ternary()
-		p.consume(tokenColon, "Expect ':' after conditional.")
+		p.consume(ast.TokenColon, "Expect ':' after conditional.")
 		cond2 := p.ternary()
-		expr = ternaryExpr{expr, cond1, cond2}
+		expr = ast.TernaryExpr{Cond: expr, Left: cond1, Right: cond2}
 	}
 
 	return expr
 }
 
-func (p *parser) equality() expr {
+func (p *parser) equality() ast.Expr {
 	expr := p.comparison()
 
-	for p.match(tokenBangEqual, tokenEqualEqual) {
+	for p.match(ast.TokenBangEqual, ast.TokenEqualEqual) {
 		operator := p.previous()
 		right := p.comparison()
-		expr = binaryExpr{expr, operator, right}
+		expr = ast.BinaryExpr{Left: expr, Operator: operator, Right: right}
 	}
 
 	return expr
 }
 
-func (p *parser) comparison() expr {
+func (p *parser) comparison() ast.Expr {
 	expr := p.term()
 
-	for p.match(tokenGreater, tokenGreaterEqual, tokenLess, tokenLessEqual) {
+	for p.match(ast.TokenGreater, ast.TokenGreaterEqual, ast.TokenLess, ast.TokenLessEqual) {
 		operator := p.previous()
 		right := p.term()
-		expr = binaryExpr{expr, operator, right}
+		expr = ast.BinaryExpr{Left: expr, Operator: operator, Right: right}
 	}
 
 	return expr
 }
 
-func (p *parser) term() expr {
+func (p *parser) term() ast.Expr {
 	expr := p.factor()
 
-	for p.match(tokenMinus, tokenPlus) {
+	for p.match(ast.TokenMinus, ast.TokenPlus) {
 		operator := p.previous()
 		right := p.factor()
-		expr = binaryExpr{expr, operator, right}
+		expr = ast.BinaryExpr{Left: expr, Operator: operator, Right: right}
 	}
 
 	return expr
 }
 
-func (p *parser) factor() expr {
+func (p *parser) factor() ast.Expr {
 	expr := p.unary()
 
-	for p.match(tokenSlash, tokenStar) {
+	for p.match(ast.TokenSlash, ast.TokenStar) {
 		operator := p.previous()
 		right := p.unary()
-		expr = binaryExpr{expr, operator, right}
+		expr = ast.BinaryExpr{Left: expr, Operator: operator, Right: right}
 	}
 
 	return expr
 }
 
-func (p *parser) unary() expr {
-	if p.match(tokenBang, tokenMinus) {
+func (p *parser) unary() ast.Expr {
+	if p.match(ast.TokenBang, ast.TokenMinus) {
 		operator := p.previous()
 		right := p.unary()
-		return unaryExpr{operator, right}
+		return ast.UnaryExpr{Operator: operator, Right: right}
 	}
 
 	return p.primary()
 }
 
-func (p *parser) primary() expr {
+func (p *parser) primary() ast.Expr {
 	switch {
-	case p.match(tokenFalse):
-		return literalExpr{false}
-	case p.match(tokenTrue):
-		return literalExpr{true}
-	case p.match(tokenNil):
-		return literalExpr{nil}
-	case p.match(tokenNumber, tokenString):
-		return literalExpr{p.previous().literal}
-	case p.match(tokenLeftParen):
+	case p.match(ast.TokenFalse):
+		return ast.LiteralExpr{Value: false}
+	case p.match(ast.TokenTrue):
+		return ast.LiteralExpr{Value: true}
+	case p.match(ast.TokenNil):
+		return ast.LiteralExpr{}
+	case p.match(ast.TokenNumber, ast.TokenString):
+		return ast.LiteralExpr{Value: p.previous().Literal}
+	case p.match(ast.TokenLeftParen):
 		exp := p.expression()
-		p.consume(tokenRightParen, "Expect ')' after expression.")
-		return groupingExpr{exp}
-	case p.match(tokenIdentifier):
-		return variableExpr{p.previous()}
+		p.consume(ast.TokenRightParen, "Expect ')' after expression.")
+		return ast.GroupingExpr{Expression: exp}
+	case p.match(ast.TokenIdentifier):
+		return ast.VariableExpr{Name: p.previous()}
 	}
 
 	panic(p.error(p.peek(), "Expect expression."))
 }
 
-func (p *parser) consume(tknType tokenType, message string) token {
-	if p.check(tknType) {
+func (p *parser) consume(tokenType ast.TokenType, message string) ast.Token {
+	if p.check(tokenType) {
 		return p.advance()
 	}
 
 	panic(p.error(p.peek(), message))
 }
 
-func (p *parser) error(token token, message string) error {
-	reportTokenErr(token, message)
+func (p *parser) error(Token ast.Token, message string) error {
+	reportTokenErr(Token, message)
 	return parseError{}
 }
 
 func (p *parser) synchronize() {
 	p.advance()
 	for !p.isAtEnd() {
-		if p.previous().tknType == tokenSemicolon {
+		if p.previous().TokenType == ast.TokenSemicolon {
 			return
 		}
 
-		switch p.peek().tknType {
-		case tokenClass, tokenFor, tokenFun, tokenIf, tokenPrint, tokenReturn, tokenVar, tokenWhile:
+		switch p.peek().TokenType {
+		case ast.TokenClass, ast.TokenFor, ast.TokenFun, ast.TokenIf, ast.TokenPrint, ast.TokenReturn, ast.TokenVar, ast.TokenWhile:
 			return
 		}
 
@@ -252,9 +254,9 @@ func (p *parser) synchronize() {
 	}
 }
 
-func (p *parser) match(types ...tokenType) bool {
-	for _, tknType := range types {
-		if p.check(tknType) {
+func (p *parser) match(types ...ast.TokenType) bool {
+	for _, tokenType := range types {
+		if p.check(tokenType) {
 			p.advance()
 			return true
 		}
@@ -263,15 +265,15 @@ func (p *parser) match(types ...tokenType) bool {
 	return false
 }
 
-func (p *parser) check(tknType tokenType) bool {
+func (p *parser) check(tokenType ast.TokenType) bool {
 	if p.isAtEnd() {
 		return false
 	}
 
-	return p.peek().tknType == tknType
+	return p.peek().TokenType == tokenType
 }
 
-func (p *parser) advance() token {
+func (p *parser) advance() ast.Token {
 	if !p.isAtEnd() {
 		p.current++
 	}
@@ -279,13 +281,13 @@ func (p *parser) advance() token {
 }
 
 func (p *parser) isAtEnd() bool {
-	return p.peek().tknType == tokenEof
+	return p.peek().TokenType == ast.TokenEof
 }
 
-func (p *parser) peek() token {
+func (p *parser) peek() ast.Token {
 	return p.tokens[p.current]
 }
 
-func (p *parser) previous() token {
+func (p *parser) previous() ast.Token {
 	return p.tokens[p.current-1]
 }

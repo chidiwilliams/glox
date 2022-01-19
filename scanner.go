@@ -2,6 +2,8 @@ package main
 
 import (
 	"strconv"
+
+	"glox/ast"
 )
 
 type scanner struct {
@@ -9,17 +11,17 @@ type scanner struct {
 	current int
 	line    int
 	source  string
-	tokens  []token
+	tokens  []ast.Token
 }
 
-func (s *scanner) scanTokens() []token {
+func (s *scanner) scanTokens() []ast.Token {
 	for !s.isAtEnd() {
 		// we're at the beginning of the next lexeme
 		s.start = s.current
 		s.scanToken()
 	}
 
-	s.tokens = append(s.tokens, token{tokenEof, "", nil, s.line})
+	s.tokens = append(s.tokens, ast.Token{TokenType: ast.TokenEof, Line: s.line})
 	return s.tokens
 }
 
@@ -27,61 +29,61 @@ func (s *scanner) scanToken() {
 	char := s.advance()
 	switch char {
 	case '(':
-		s.addToken(tokenLeftParen)
+		s.addToken(ast.TokenLeftParen)
 	case ')':
-		s.addToken(tokenRightParen)
+		s.addToken(ast.TokenRightParen)
 	case '{':
-		s.addToken(tokenLeftBrace)
+		s.addToken(ast.TokenLeftBrace)
 	case '}':
-		s.addToken(tokenRightBrace)
+		s.addToken(ast.TokenRightBrace)
 	case ',':
-		s.addToken(tokenComma)
+		s.addToken(ast.TokenComma)
 	case '.':
-		s.addToken(tokenDot)
+		s.addToken(ast.TokenDot)
 	case '-':
-		s.addToken(tokenMinus)
+		s.addToken(ast.TokenMinus)
 	case '+':
-		s.addToken(tokenPlus)
+		s.addToken(ast.TokenPlus)
 	case ';':
-		s.addToken(tokenSemicolon)
+		s.addToken(ast.TokenSemicolon)
 	case ':':
-		s.addToken(tokenColon)
+		s.addToken(ast.TokenColon)
 	case '*':
-		s.addToken(tokenStar)
+		s.addToken(ast.TokenStar)
 	case '?':
-		s.addToken(tokenQuestionMark)
+		s.addToken(ast.TokenQuestionMark)
 
 	// with look-ahead
 	case '!':
-		var nextToken tokenType
+		var nextToken ast.TokenType
 		if s.match('=') {
-			nextToken = tokenBangEqual
+			nextToken = ast.TokenBangEqual
 		} else {
-			nextToken = tokenBang
+			nextToken = ast.TokenBang
 		}
 		s.addToken(nextToken)
 	case '=':
-		var nextToken tokenType
+		var nextToken ast.TokenType
 		if s.match('=') {
-			nextToken = tokenEqualEqual
+			nextToken = ast.TokenEqualEqual
 		} else {
-			nextToken = tokenEqual
+			nextToken = ast.TokenEqual
 		}
 		s.addToken(nextToken)
 	case '<':
-		var nextToken tokenType
+		var nextToken ast.TokenType
 		if s.match('=') {
-			nextToken = tokenLessEqual
+			nextToken = ast.TokenLessEqual
 		} else {
-			nextToken = tokenLess
+			nextToken = ast.TokenLess
 		}
 		s.addToken(nextToken)
 	case '>':
-		var nextToken tokenType
+		var nextToken ast.TokenType
 		if s.match('=') {
-			nextToken = tokenGreaterEqual
+			nextToken = ast.TokenGreaterEqual
 		} else {
-			nextToken = tokenGreater
+			nextToken = ast.TokenGreater
 		}
 		s.addToken(nextToken)
 	case '/':
@@ -90,7 +92,7 @@ func (s *scanner) scanToken() {
 				s.advance()
 			}
 		} else {
-			s.addToken(tokenSlash)
+			s.addToken(ast.TokenSlash)
 		}
 
 	// whitespace
@@ -125,13 +127,13 @@ func (s *scanner) advance() rune {
 	return curr
 }
 
-func (s *scanner) addToken(tknType tokenType) {
-	s.addTokenWithLiteral(tknType, nil)
+func (s *scanner) addToken(tokenType ast.TokenType) {
+	s.addTokenWithLiteral(tokenType, nil)
 }
 
-func (s *scanner) addTokenWithLiteral(tknType tokenType, literal interface{}) {
+func (s *scanner) addTokenWithLiteral(tokenType ast.TokenType, literal interface{}) {
 	text := s.source[s.start:s.current]
-	s.tokens = append(s.tokens, token{tknType, text, literal, s.line})
+	s.tokens = append(s.tokens, ast.Token{TokenType: tokenType, Lexeme: text, Literal: literal, Line: s.line})
 }
 
 func (s *scanner) match(expected rune) bool {
@@ -163,7 +165,7 @@ func (s *scanner) string() {
 	s.advance() // the closing "
 
 	value := s.source[s.start:s.current]
-	s.addTokenWithLiteral(tokenString, value)
+	s.addTokenWithLiteral(ast.TokenString, value)
 }
 
 func (s *scanner) isDigit(r rune) bool {
@@ -184,7 +186,7 @@ func (s *scanner) number() {
 	}
 
 	val, _ := strconv.ParseFloat(s.source[s.start:s.current], 64)
-	s.addTokenWithLiteral(tokenNumber, val)
+	s.addTokenWithLiteral(ast.TokenNumber, val)
 }
 
 func (s *scanner) peek() rune {
@@ -205,23 +207,23 @@ func (s *scanner) isAlpha(char rune) bool {
 	return (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char == '_')
 }
 
-var keywords = map[string]tokenType{
-	"and":    tokenAnd,
-	"class":  tokenClass,
-	"else":   tokenElse,
-	"false":  tokenFalse,
-	"for":    tokenFor,
-	"fun":    tokenFun,
-	"if":     tokenIf,
-	"nil":    tokenNil,
-	"or":     tokenOr,
-	"print":  tokenPrint,
-	"return": tokenReturn,
-	"super":  tokenSuper,
-	"this":   tokenThis,
-	"true":   tokenTrue,
-	"var":    tokenVar,
-	"while":  tokenWhile,
+var keywords = map[string]ast.TokenType{
+	"and":    ast.TokenAnd,
+	"class":  ast.TokenClass,
+	"else":   ast.TokenElse,
+	"false":  ast.TokenFalse,
+	"for":    ast.TokenFor,
+	"fun":    ast.TokenFun,
+	"if":     ast.TokenIf,
+	"nil":    ast.TokenNil,
+	"or":     ast.TokenOr,
+	"print":  ast.TokenPrint,
+	"return": ast.TokenReturn,
+	"super":  ast.TokenSuper,
+	"this":   ast.TokenThis,
+	"true":   ast.TokenTrue,
+	"var":    ast.TokenVar,
+	"while":  ast.TokenWhile,
 }
 
 func (s *scanner) identifier() {
@@ -230,11 +232,11 @@ func (s *scanner) identifier() {
 	}
 
 	text := s.source[s.start:s.current]
-	tknType, found := keywords[text]
+	tokenType, found := keywords[text]
 	if !found {
-		tknType = tokenIdentifier
+		tokenType = ast.TokenIdentifier
 	}
-	s.addToken(tknType)
+	s.addToken(tokenType)
 }
 
 func (s *scanner) isAlphaNumeric(char rune) bool {

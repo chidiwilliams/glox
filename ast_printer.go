@@ -1,46 +1,50 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+
+	"glox/ast"
+)
 
 type astPrinter struct{}
 
-func (a astPrinter) visitAssignExpr(expr assignExpr) interface{} {
-	return a.parenthesize("= "+expr.name.lexeme, expr.value)
+func (a astPrinter) print(expr ast.Expr) string {
+	return expr.Accept(a).(string)
 }
 
-func (a astPrinter) print(expr expr) string {
-	return expr.accept(a).(string)
+func (a astPrinter) VisitAssignExpr(expr ast.AssignExpr) interface{} {
+	return a.parenthesize("= "+expr.Name.Lexeme, expr.Value)
 }
 
-func (a astPrinter) visitVariableExpr(expr variableExpr) interface{} {
-	return expr.name.lexeme
+func (a astPrinter) VisitVariableExpr(expr ast.VariableExpr) interface{} {
+	return expr.Name.Lexeme
 }
 
-func (a astPrinter) visitTernaryExpr(expr ternaryExpr) interface{} {
-	return a.parenthesize("?:", expr.cond, expr.left, expr.right)
+func (a astPrinter) VisitTernaryExpr(expr ast.TernaryExpr) interface{} {
+	return a.parenthesize("?:", expr.Cond, expr.Left, expr.Right)
 }
 
-func (a astPrinter) visitBinaryExpr(expr binaryExpr) interface{} {
-	return a.parenthesize(expr.operator.lexeme, expr.left, expr.right)
+func (a astPrinter) VisitBinaryExpr(expr ast.BinaryExpr) interface{} {
+	return a.parenthesize(expr.Operator.Lexeme, expr.Left, expr.Right)
 }
 
-func (a astPrinter) visitGroupingExpr(expr groupingExpr) interface{} {
-	return a.parenthesize("group", expr.expression)
+func (a astPrinter) VisitGroupingExpr(expr ast.GroupingExpr) interface{} {
+	return a.parenthesize("group", expr.Expression)
 }
 
-func (a astPrinter) visitLiteralExpr(expr literalExpr) interface{} {
-	if expr.value == nil {
+func (a astPrinter) VisitLiteralExpr(expr ast.LiteralExpr) interface{} {
+	if expr.Value == nil {
 		return "nil"
 	}
 
-	return fmt.Sprint(expr.value)
+	return fmt.Sprint(expr.Value)
 }
 
-func (a astPrinter) visitUnaryExpr(expr unaryExpr) interface{} {
-	return a.parenthesize(expr.operator.lexeme, expr.right)
+func (a astPrinter) VisitUnaryExpr(expr ast.UnaryExpr) interface{} {
+	return a.parenthesize(expr.Operator.Lexeme, expr.Right)
 }
 
-func (a astPrinter) parenthesize(name string, exprs ...expr) string {
+func (a astPrinter) parenthesize(name string, exprs ...ast.Expr) string {
 	var str string
 
 	str += "(" + name
