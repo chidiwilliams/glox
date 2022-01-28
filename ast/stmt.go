@@ -47,6 +47,20 @@ func (b WhileStmt) Accept(visitor StmtVisitor) interface{} {
 	return visitor.VisitWhileStmt(b)
 }
 
+type ContinueStmt struct {
+}
+
+func (b ContinueStmt) Accept(visitor StmtVisitor) interface{} {
+	return visitor.VisitContinueStmt(b)
+}
+
+type BreakStmt struct {
+}
+
+func (b BreakStmt) Accept(visitor StmtVisitor) interface{} {
+	return visitor.VisitBreakStmt(b)
+}
+
 type VarStmt struct {
 	Name        Token
 	Initializer Expr
@@ -62,5 +76,7 @@ type StmtVisitor interface {
 	VisitIfStmt(stmt IfStmt) interface{}
 	VisitPrintStmt(stmt PrintStmt) interface{}
 	VisitWhileStmt(stmt WhileStmt) interface{}
+	VisitContinueStmt(stmt ContinueStmt) interface{}
+	VisitBreakStmt(stmt BreakStmt) interface{}
 	VisitVarStmt(stmt VarStmt) interface{}
 }

@@ -18,7 +18,7 @@ Parser grammar:
 	program     => declaration* EOF
 	declaration => varDecl | statement
 	varDecl     => "var" IDENTIFIER ( "=" expression )? ";"
-	statement   => exprStmt | ifStmt | forStmt | printStmt | whileStmt | block
+	statement   => exprStmt | ifStmt | forStmt | printStmt | whileStmt | breakStmt | continueStmt | block
 	exprStmt    => expression ";"
 	ifStmt      => "if" "(" expression ")" statement ( "else" statement )?
 	forStmt     => "for" "(" ( varDecl | exprStmt | ";" ) expression? ";" expression? ")" statement
@@ -45,6 +45,7 @@ Parser grammar:
 type parser struct {
 	tokens  []ast.Token
 	current int
+	loop    int
 }
 
 func (p *parser) parse() []ast.Stmt {
@@ -100,10 +101,28 @@ func (p *parser) statement() ast.Stmt {
 		return p.ifStatement()
 	}
 	if p.match(ast.TokenWhile) {
+		p.loop++
+		defer func() { p.loop-- }()
 		return p.whileStatement()
 	}
 	if p.match(ast.TokenFor) {
+		p.loop++
+		defer func() { p.loop-- }()
 		return p.forStatement()
+	}
+	if p.match(ast.TokenBreak) {
+		if p.loop == 0 {
+			panic(p.error(p.previous(), "Break outside loop"))
+		}
+		p.consume(ast.TokenSemicolon, "Expect ';' after break")
+		return ast.BreakStmt{}
+	}
+	if p.match(ast.TokenContinue) {
+		if p.loop == 0 {
+			panic(p.error(p.previous(), "Continue outside loop"))
+		}
+		p.consume(ast.TokenSemicolon, "Expect ';' after continue")
+		return ast.ContinueStmt{}
 	}
 	return p.expressionStatement()
 }
@@ -147,7 +166,6 @@ func (p *parser) forStatement() ast.Stmt {
 	}
 
 	return body
-
 }
 
 func (p *parser) printStatement() ast.Stmt {
@@ -360,7 +378,8 @@ func (p *parser) synchronize() {
 
 		switch p.peek().TokenType {
 		case ast.TokenClass, ast.TokenFor, ast.TokenFun, ast.TokenIf,
-			ast.TokenPrint, ast.TokenReturn, ast.TokenVar, ast.TokenWhile:
+			ast.TokenPrint, ast.TokenReturn, ast.TokenVar, ast.TokenWhile,
+			ast.TokenBreak, ast.TokenContinue:
 			return
 		}
 

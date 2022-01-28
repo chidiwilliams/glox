@@ -61,11 +61,46 @@ func (in *interpreter) VisitIfStmt(stmt ast.IfStmt) interface{} {
 	return nil
 }
 
+type breakFlag struct{}
+
 func (in *interpreter) VisitWhileStmt(stmt ast.WhileStmt) interface{} {
+	// Exit while stmt if a break is called
+	defer func() {
+		if err := recover(); err != nil {
+			if _, ok := err.(breakFlag); !ok {
+				panic(err)
+			}
+		}
+	}()
+
 	for in.isTruthy(in.evaluate(stmt.Condition)) {
-		in.execute(stmt.Body)
+		in.executeLoopBody(stmt.Body)
 	}
 	return nil
+}
+
+type continueFlag struct{}
+
+func (in *interpreter) executeLoopBody(body ast.Stmt) interface{} {
+	// Exit current body if continue panic is found
+	defer func() {
+		if err := recover(); err != nil {
+			if _, ok := err.(continueFlag); !ok {
+				panic(err)
+			}
+		}
+	}()
+
+	in.execute(body)
+	return nil
+}
+
+func (in *interpreter) VisitContinueStmt(_ ast.ContinueStmt) interface{} {
+	panic(continueFlag{})
+}
+
+func (in *interpreter) VisitBreakStmt(_ ast.BreakStmt) interface{} {
+	panic(breakFlag{})
 }
 
 func (in *interpreter) VisitLogicalExpr(expr ast.LogicalExpr) interface{} {

@@ -52,6 +52,8 @@ const (
 	TokenTrue
 	TokenVar
 	TokenWhile
+	TokenBreak
+	TokenContinue
 
 	TokenEof
 )
