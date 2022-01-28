@@ -1,6 +1,8 @@
 package main
 
-import "glox/ast"
+import (
+	"glox/ast"
+)
 
 type parseError struct {
 	msg string
@@ -16,20 +18,27 @@ Parser grammar:
 	program     => declaration* EOF
 	declaration => varDecl | statement
 	varDecl     => "var" IDENTIFIER ( "=" expression )? ";"
-	statement   => exprStmt | printStmt | block
+	statement   => exprStmt | ifStmt | forStmt | printStmt | whileStmt | block
 	exprStmt    => expression ";"
+	ifStmt      => "if" "(" expression ")" statement ( "else" statement )?
+	forStmt     => "for" "(" ( varDecl | exprStmt | ";" ) expression? ";" expression? ")" statement
 	printStmt   => "print" expression ";"
+	whileStmt   => "while" "(" expression ")" statement
 	block       => "{" declaration* "}" ;
-	expression  => assignment
-	assignment  => IDENTIFIER "=" assignment | series
-	series      => ternary ( "," ternary )*
-	ternary     => expression ( "?" ternary ":" ternary )*
-	equality    => comparison ( ( "!=" | "==" ) comparison )*
+	expression  => series
+	series      => assignment ( "," assignment )*
+	assignment  => IDENTIFIER "=" assignment | ternary
+	ternary     => logic_or ( "?" ternary ":" ternary )*
+	logic_or    => logic_and ( "or" logic_and )*
+	logic_and   => equality ( "and" equality )*
+	equality    => comparison ( ( "!=" | "==" ) comparison )
 	comparison  => term ( ( ">" | ">=" | "<" | "<=" ) term )*
 	term        => factor ( ( "+" | "-" ) factor )*
 	factor      => unary ( ( "/" | "*" ) unary )*
 	unary       => ( "!" | "-" ) unary | primary
 	primary     => NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" | IDENTIFIER
+
+	Reference: C Operator Precedence https://en.cppreference.com/w/c/language/operator_precedence
 
 */
 
@@ -46,9 +55,14 @@ func (p *parser) parse() []ast.Stmt {
 	return statements
 }
 
+// declaration parses declaration statements. A declaration statement is
+// a variable declaration or a regular statement. If the statement contains
+// a parse error, it skips to the start of the next statement and returns nil.
 func (p *parser) declaration() ast.Stmt {
 	defer func() {
 		if err := recover(); err != nil {
+			// If the error is a parseError, synchronize to
+			// the next statement. If not, propagate the panic.
 			if _, ok := err.(parseError); ok {
 				p.synchronize()
 			} else {
@@ -73,6 +87,8 @@ func (p *parser) varDeclaration() ast.Stmt {
 	return ast.VarStmt{Name: name, Initializer: initializer}
 }
 
+// statement parses statements. A statement can be a print,
+// if, while, block or expression statement.
 func (p *parser) statement() ast.Stmt {
 	if p.match(ast.TokenPrint) {
 		return p.printStatement()
@@ -80,13 +96,64 @@ func (p *parser) statement() ast.Stmt {
 	if p.match(ast.TokenLeftBrace) {
 		return ast.BlockStmt{Statements: p.block()}
 	}
+	if p.match(ast.TokenIf) {
+		return p.ifStatement()
+	}
+	if p.match(ast.TokenWhile) {
+		return p.whileStatement()
+	}
+	if p.match(ast.TokenFor) {
+		return p.forStatement()
+	}
 	return p.expressionStatement()
 }
 
+func (p *parser) forStatement() ast.Stmt {
+	p.consume(ast.TokenLeftParen, "Expect '(' after 'for'.")
+
+	var initializer ast.Stmt
+	if p.match(ast.TokenSemicolon) {
+		initializer = nil
+	} else if p.match(ast.TokenVar) {
+		initializer = p.varDeclaration()
+	} else {
+		initializer = p.expressionStatement()
+	}
+
+	var condition ast.Expr
+	if !p.check(ast.TokenSemicolon) {
+		condition = p.expression()
+	}
+	p.consume(ast.TokenSemicolon, "Expect ';' after look condition.")
+
+	var increment ast.Expr
+	if !p.check(ast.TokenRightParen) {
+		increment = p.expression()
+	}
+	p.consume(ast.TokenRightParen, "Expect ')' after for clauses.")
+	body := p.statement()
+
+	if increment != nil {
+		body = ast.BlockStmt{Statements: []ast.Stmt{body, ast.ExpressionStmt{Expr: increment}}}
+	}
+
+	if condition == nil {
+		condition = ast.LiteralExpr{Value: true}
+	}
+	body = ast.WhileStmt{Body: body, Condition: condition}
+
+	if initializer != nil {
+		body = ast.BlockStmt{Statements: []ast.Stmt{initializer, body}}
+	}
+
+	return body
+
+}
+
 func (p *parser) printStatement() ast.Stmt {
-	exp := p.expression()
+	expr := p.expression()
 	p.consume(ast.TokenSemicolon, "Expect ';' after value")
-	return ast.PrintStmt{Expr: exp}
+	return ast.PrintStmt{Expr: expr}
 }
 
 func (p *parser) block() []ast.Stmt {
@@ -98,43 +165,68 @@ func (p *parser) block() []ast.Stmt {
 	return statements
 }
 
+func (p *parser) ifStatement() ast.Stmt {
+	p.consume(ast.TokenLeftParen, "Expect '(' after 'if'.")
+	condition := p.expression()
+	p.consume(ast.TokenRightParen, "Expect ')' after if condition.")
+
+	thenBranch := p.statement()
+	var elseBranch ast.Stmt
+	if p.match(ast.TokenElse) {
+		elseBranch = p.statement()
+	}
+
+	return ast.IfStmt{Condition: condition, ThenBranch: thenBranch, ElseBranch: elseBranch}
+}
+
+func (p *parser) whileStatement() ast.Stmt {
+	p.consume(ast.TokenLeftParen, "Expect '(' after 'while'.")
+	condition := p.expression()
+	p.consume(ast.TokenRightParen, "Expect ')' after while condition.")
+	body := p.statement()
+	return ast.WhileStmt{Condition: condition, Body: body}
+}
+
+// expressionStatement parses expression statements
 func (p *parser) expressionStatement() ast.Stmt {
-	exp := p.expression()
+	// parse the next expression
+	expr := p.expression()
+	// panic if the next token is not a semicolon
 	p.consume(ast.TokenSemicolon, "Expect ';' after value")
-	return ast.ExpressionStmt{Expr: exp}
+	return ast.ExpressionStmt{Expr: expr}
 }
 
 func (p *parser) expression() ast.Expr {
-	return p.assignment()
-}
-
-func (p *parser) assignment() ast.Expr {
-	exp := p.series()
-	if p.match(ast.TokenEqual) {
-		equals := p.previous()
-		if varExpr, ok := exp.(ast.VariableExpr); ok {
-			value := p.assignment()
-			return ast.AssignExpr{Name: varExpr.Name, Value: value}
-		}
-		_ = p.error(equals, "Invalid assignment target.")
-	}
-
-	return exp
+	return p.series()
 }
 
 func (p *parser) series() ast.Expr {
-	expr := p.ternary()
+	expr := p.assignment()
 	for p.match(ast.TokenComma) {
 		operator := p.previous()
-		right := p.ternary()
+		right := p.assignment()
 		expr = ast.BinaryExpr{Left: expr, Operator: operator, Right: right}
 	}
 
 	return expr
 }
 
+func (p *parser) assignment() ast.Expr {
+	expr := p.ternary()
+	if p.match(ast.TokenEqual) {
+		equals := p.previous()
+		if varExpr, ok := expr.(ast.VariableExpr); ok {
+			value := p.assignment()
+			return ast.AssignExpr{Name: varExpr.Name, Value: value}
+		}
+		_ = p.error(equals, "Invalid assignment target.")
+	}
+
+	return expr
+}
+
 func (p *parser) ternary() ast.Expr {
-	expr := p.equality()
+	expr := p.or()
 
 	if p.match(ast.TokenQuestionMark) {
 		cond1 := p.ternary()
@@ -143,6 +235,26 @@ func (p *parser) ternary() ast.Expr {
 		expr = ast.TernaryExpr{Cond: expr, Left: cond1, Right: cond2}
 	}
 
+	return expr
+}
+
+func (p *parser) or() ast.Expr {
+	expr := p.and()
+	for p.match(ast.TokenOr) {
+		operator := p.previous()
+		right := p.and()
+		expr = ast.LogicalExpr{Left: expr, Operator: operator, Right: right}
+	}
+	return expr
+}
+
+func (p *parser) and() ast.Expr {
+	expr := p.equality()
+	for p.match(ast.TokenAnd) {
+		operator := p.previous()
+		right := p.equality()
+		expr = ast.LogicalExpr{Left: expr, Operator: operator, Right: right}
+	}
 	return expr
 }
 
@@ -215,9 +327,9 @@ func (p *parser) primary() ast.Expr {
 	case p.match(ast.TokenNumber, ast.TokenString):
 		return ast.LiteralExpr{Value: p.previous().Literal}
 	case p.match(ast.TokenLeftParen):
-		exp := p.expression()
+		expr := p.expression()
 		p.consume(ast.TokenRightParen, "Expect ')' after expression.")
-		return ast.GroupingExpr{Expression: exp}
+		return ast.GroupingExpr{Expression: expr}
 	case p.match(ast.TokenIdentifier):
 		return ast.VariableExpr{Name: p.previous()}
 	}
@@ -225,11 +337,12 @@ func (p *parser) primary() ast.Expr {
 	panic(p.error(p.peek(), "Expect expression."))
 }
 
+// consume checks that the next ast.Token is of the given ast.TokenType and then
+// advances to the next token. If the check fails, it panics with the given message.
 func (p *parser) consume(tokenType ast.TokenType, message string) ast.Token {
 	if p.check(tokenType) {
 		return p.advance()
 	}
-
 	panic(p.error(p.peek(), message))
 }
 
@@ -246,7 +359,8 @@ func (p *parser) synchronize() {
 		}
 
 		switch p.peek().TokenType {
-		case ast.TokenClass, ast.TokenFor, ast.TokenFun, ast.TokenIf, ast.TokenPrint, ast.TokenReturn, ast.TokenVar, ast.TokenWhile:
+		case ast.TokenClass, ast.TokenFor, ast.TokenFun, ast.TokenIf,
+			ast.TokenPrint, ast.TokenReturn, ast.TokenVar, ast.TokenWhile:
 			return
 		}
 

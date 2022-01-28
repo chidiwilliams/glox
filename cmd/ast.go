@@ -11,18 +11,21 @@ import (
 func main() {
 	writeAst("Expr", []string{
 		"Assign   : Name Token, Value Expr",
-		"Unary    : Operator Token, Right Expr",
 		"Binary   : Left Expr, Operator Token, Right Expr",
 		"Ternary  : Cond Expr, Left Expr, Right Expr",
 		"Grouping : Expression Expr",
 		"Literal  : Value interface{}",
+		"Logical  : Left Expr, Operator Token, Right Expr",
+		"Unary    : Operator Token, Right Expr",
 		"Variable : Name Token",
 	})
 
 	writeAst("Stmt", []string{
 		"Block      : Statements []Stmt",
 		"Expression : Expr Expr",
+		"If         : Condition Expr, ThenBranch Stmt, ElseBranch Stmt",
 		"Print      : Expr Expr",
+		"While      : Condition Expr, Body Stmt",
 		"Var        : Name Token, Initializer Expr",
 	})
 }
@@ -87,7 +90,7 @@ func defineVisitor(name string, types []string) (str string) {
 	for _, t := range types {
 		splitType := strings.Split(t, ":")
 		fullTypeName := strings.Trim(splitType[0], " ") + strings.ToUpper(name[:1]) + name[1:]
-		str += fmt.Sprintf("\tVisit%s(Expr %s) interface{}\n", fullTypeName, fullTypeName)
+		str += fmt.Sprintf("\tVisit%s(%s %s) interface{}\n", fullTypeName, strings.ToLower(name), fullTypeName)
 	}
 	str += "}\n"
 	return str

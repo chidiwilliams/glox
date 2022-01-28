@@ -133,7 +133,8 @@ func (s *scanner) addToken(tokenType ast.TokenType) {
 
 func (s *scanner) addTokenWithLiteral(tokenType ast.TokenType, literal interface{}) {
 	text := s.source[s.start:s.current]
-	s.tokens = append(s.tokens, ast.Token{TokenType: tokenType, Lexeme: text, Literal: literal, Line: s.line})
+	token := ast.Token{TokenType: tokenType, Lexeme: text, Literal: literal, Line: s.line}
+	s.tokens = append(s.tokens, token)
 }
 
 func (s *scanner) match(expected rune) bool {

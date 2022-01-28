@@ -8,6 +8,7 @@ import (
 
 type astPrinter struct{}
 
+// print returns a string representation of an ast.Expr node
 func (a astPrinter) print(expr ast.Expr) string {
 	return expr.Accept(a).(string)
 }
@@ -42,6 +43,10 @@ func (a astPrinter) VisitLiteralExpr(expr ast.LiteralExpr) interface{} {
 
 func (a astPrinter) VisitUnaryExpr(expr ast.UnaryExpr) interface{} {
 	return a.parenthesize(expr.Operator.Lexeme, expr.Right)
+}
+
+func (a astPrinter) VisitLogicalExpr(expr ast.LogicalExpr) interface{} {
+	return a.parenthesize(expr.Operator.Lexeme, expr.Left, expr.Right)
 }
 
 func (a astPrinter) parenthesize(name string, exprs ...ast.Expr) string {

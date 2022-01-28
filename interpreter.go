@@ -7,37 +7,8 @@ import (
 )
 
 type interpreter struct {
+	// TODO: Why is this a pointer?
 	environment *environment
-}
-
-func (in *interpreter) VisitBlockStmt(stmt ast.BlockStmt) interface{} {
-	in.executeBlock(stmt.Statements, &environment{enclosing: in.environment})
-	return nil
-}
-
-func (in *interpreter) VisitAssignExpr(expr ast.AssignExpr) interface{} {
-	val := in.evaluate(expr.Value)
-	in.environment.assign(expr.Name, val)
-	return val
-}
-
-func (in *interpreter) VisitVarStmt(stmt ast.VarStmt) interface{} {
-	var val interface{}
-	if stmt.Initializer != nil {
-		val = in.evaluate(stmt.Initializer)
-	}
-	in.environment.define(stmt.Name.Lexeme, val)
-	return nil
-}
-
-func (in *interpreter) VisitExpressionStmt(stmt ast.ExpressionStmt) interface{} {
-	return in.evaluate(stmt.Expr)
-}
-
-func (in *interpreter) VisitPrintStmt(stmt ast.PrintStmt) interface{} {
-	value := in.evaluate(stmt.Expr)
-	fmt.Println(in.stringify(value))
-	return nil
 }
 
 func (in *interpreter) interpret(stmts []ast.Stmt) interface{} {
@@ -64,6 +35,67 @@ func (in *interpreter) execute(stmt ast.Stmt) interface{} {
 
 func (in *interpreter) evaluate(expr ast.Expr) interface{} {
 	return expr.Accept(in)
+}
+
+func (in *interpreter) VisitBlockStmt(stmt ast.BlockStmt) interface{} {
+	// TODO: Why do I need to pass in a pointer here
+	in.executeBlock(stmt.Statements, &environment{enclosing: in.environment})
+	return nil
+}
+
+func (in *interpreter) VisitVarStmt(stmt ast.VarStmt) interface{} {
+	var val interface{}
+	if stmt.Initializer != nil {
+		val = in.evaluate(stmt.Initializer)
+	}
+	in.environment.define(stmt.Name.Lexeme, val)
+	return nil
+}
+
+func (in *interpreter) VisitIfStmt(stmt ast.IfStmt) interface{} {
+	if in.isTruthy(in.evaluate(stmt.Condition)) {
+		in.execute(stmt.ThenBranch)
+	} else if stmt.ElseBranch != nil {
+		in.execute(stmt.ElseBranch)
+	}
+	return nil
+}
+
+func (in *interpreter) VisitWhileStmt(stmt ast.WhileStmt) interface{} {
+	for in.isTruthy(in.evaluate(stmt.Condition)) {
+		in.execute(stmt.Body)
+	}
+	return nil
+}
+
+func (in *interpreter) VisitLogicalExpr(expr ast.LogicalExpr) interface{} {
+	left := in.evaluate(expr.Left)
+	if expr.Operator.TokenType == ast.TokenOr {
+		if in.isTruthy(left) {
+			return left
+		}
+	} else { // and
+		if !in.isTruthy(left) {
+			return left
+		}
+	}
+	return in.evaluate(expr.Right)
+}
+
+func (in *interpreter) VisitExpressionStmt(stmt ast.ExpressionStmt) interface{} {
+	return in.evaluate(stmt.Expr)
+}
+
+func (in *interpreter) VisitPrintStmt(stmt ast.PrintStmt) interface{} {
+	value := in.evaluate(stmt.Expr)
+	fmt.Println(in.stringify(value))
+	return nil
+}
+
+func (in *interpreter) VisitAssignExpr(expr ast.AssignExpr) interface{} {
+	val := in.evaluate(expr.Value)
+	in.environment.assign(expr.Name, val)
+	return val
 }
 
 func (in *interpreter) VisitVariableExpr(expr ast.VariableExpr) interface{} {
@@ -109,7 +141,7 @@ func (in *interpreter) VisitBinaryExpr(expr ast.BinaryExpr) interface{} {
 	case ast.TokenLessEqual:
 		in.checkNumberOperands(expr.Operator, left, right)
 		return left.(float64) <= right.(float64)
-	case ast.TokenEqual:
+	case ast.TokenEqualEqual:
 		return left == right
 	case ast.TokenBangEqual:
 		return left != right
@@ -147,6 +179,16 @@ func (in *interpreter) VisitTernaryExpr(expr ast.TernaryExpr) interface{} {
 	return in.evaluate(expr.Right)
 }
 
+func (in *interpreter) executeBlock(statements []ast.Stmt, env *environment) {
+	previous := in.environment
+	defer func() { in.environment = previous }()
+
+	in.environment = env
+	for _, statement := range statements {
+		in.execute(statement)
+	}
+}
+
 func (in *interpreter) isTruthy(val interface{}) bool {
 	if val == nil {
 		return false
@@ -178,14 +220,4 @@ func (in *interpreter) stringify(value interface{}) string {
 		return "nil"
 	}
 	return fmt.Sprint(value)
-}
-
-func (in *interpreter) executeBlock(statements []ast.Stmt, env *environment) {
-	previous := in.environment
-	defer func() { in.environment = previous }()
-
-	in.environment = env
-	for _, statement := range statements {
-		in.execute(statement)
-	}
 }
