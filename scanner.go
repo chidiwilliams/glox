@@ -165,7 +165,7 @@ func (s *scanner) string() {
 
 	s.advance() // the closing "
 
-	value := s.source[s.start:s.current]
+	value := s.source[s.start+1 : s.current-1]
 	s.addTokenWithLiteral(ast.TokenString, value)
 }
 

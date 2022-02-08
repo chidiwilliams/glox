@@ -8,6 +8,11 @@ import (
 
 type astPrinter struct{}
 
+func (a astPrinter) VisitCallExpr(expr ast.CallExpr) interface{} {
+	// TODO implement me
+	panic("implement me")
+}
+
 // print returns a string representation of an ast.Expr node
 func (a astPrinter) print(expr ast.Expr) string {
 	return expr.Accept(a).(string)

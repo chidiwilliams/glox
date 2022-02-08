@@ -33,6 +33,6 @@ func (r runtimeError) Error() string {
 }
 
 func reportRuntimeErr(err error) {
-	fmt.Println(err.Error())
+	fmt.Println(err)
 	hadRuntimeError = true
 }

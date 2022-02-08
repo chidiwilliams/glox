@@ -16,13 +16,18 @@ func (p parseError) Error() string {
 Parser grammar:
 
 	program     => declaration* EOF
-	declaration => varDecl | statement
+	declaration => funcDecl | varDecl | statement
+	funDecl     => "fun" function
+	function    => IDENTIFIER "(" parameters? ")" block
+	parameters  => IDENTIFIER ( "," IDENTIFIER )*
 	varDecl     => "var" IDENTIFIER ( "=" expression )? ";"
-	statement   => exprStmt | ifStmt | forStmt | printStmt | whileStmt | breakStmt | continueStmt | block
+	statement   => exprStmt | ifStmt | forStmt | printStmt | returnStmt | whileStmt
+									| breakStmt | continueStmt | block
 	exprStmt    => expression ";"
 	ifStmt      => "if" "(" expression ")" statement ( "else" statement )?
 	forStmt     => "for" "(" ( varDecl | exprStmt | ";" ) expression? ";" expression? ")" statement
 	printStmt   => "print" expression ";"
+	returnStmt  => "return" expression? ";"
 	whileStmt   => "while" "(" expression ")" statement
 	block       => "{" declaration* "}" ;
 	expression  => series
@@ -35,7 +40,9 @@ Parser grammar:
 	comparison  => term ( ( ">" | ">=" | "<" | "<=" ) term )*
 	term        => factor ( ( "+" | "-" ) factor )*
 	factor      => unary ( ( "/" | "*" ) unary )*
-	unary       => ( "!" | "-" ) unary | primary
+	unary       => ( "!" | "-" ) unary | call
+	call        => primary ( "(" arguments? ")" )*
+	arguments   => expression ( "," expression )*
 	primary     => NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" | IDENTIFIER
 
 	Reference: C Operator Precedence https://en.cppreference.com/w/c/language/operator_precedence
@@ -72,6 +79,9 @@ func (p *parser) declaration() ast.Stmt {
 		}
 	}()
 
+	if p.match(ast.TokenFun) {
+		return p.function("function")
+	}
 	if p.match(ast.TokenVar) {
 		return p.varDeclaration()
 	}
@@ -124,6 +134,9 @@ func (p *parser) statement() ast.Stmt {
 		p.consume(ast.TokenSemicolon, "Expect ';' after continue")
 		return ast.ContinueStmt{}
 	}
+	if p.match(ast.TokenReturn) {
+		return p.returnStatement()
+	}
 	return p.expressionStatement()
 }
 
@@ -174,6 +187,16 @@ func (p *parser) printStatement() ast.Stmt {
 	return ast.PrintStmt{Expr: expr}
 }
 
+func (p *parser) returnStatement() ast.Stmt {
+	keyword := p.previous()
+	var value ast.Expr
+	if !p.check(ast.TokenSemicolon) {
+		value = p.expression()
+	}
+	p.consume(ast.TokenSemicolon, "Expect ';' after return value.")
+	return ast.ReturnStmt{Keyword: keyword, Value: value}
+}
+
 func (p *parser) block() []ast.Stmt {
 	var statements []ast.Stmt
 	for !p.check(ast.TokenRightBrace) && !p.isAtEnd() {
@@ -212,6 +235,30 @@ func (p *parser) expressionStatement() ast.Stmt {
 	// panic if the next token is not a semicolon
 	p.consume(ast.TokenSemicolon, "Expect ';' after value")
 	return ast.ExpressionStmt{Expr: expr}
+}
+
+func (p *parser) function(kind string) ast.Stmt {
+	name := p.consume(ast.TokenIdentifier, "Expect "+kind+" name.")
+	p.consume(ast.TokenLeftParen, "Expect '(' after "+kind+" name.")
+
+	parameters := make([]ast.Token, 0)
+	if !p.check(ast.TokenRightParen) {
+		for {
+			if len(parameters) >= 255 {
+				p.error(p.peek(), "Can't have more than 255 parameters.")
+			}
+			parameters = append(parameters, p.consume(ast.TokenIdentifier, "Expect parameter name."))
+			if !p.match(ast.TokenComma) {
+				break
+			}
+		}
+	}
+
+	p.consume(ast.TokenRightParen, "Expect ')' after parameters")
+	p.consume(ast.TokenLeftBrace, "Expect '{' before "+kind+" body.")
+
+	body := p.block()
+	return ast.FunctionStmt{Name: name, Params: parameters, Body: body}
 }
 
 func (p *parser) expression() ast.Expr {
@@ -331,7 +378,36 @@ func (p *parser) unary() ast.Expr {
 		return ast.UnaryExpr{Operator: operator, Right: right}
 	}
 
-	return p.primary()
+	return p.call()
+}
+
+func (p *parser) call() ast.Expr {
+	expr := p.primary()
+	for {
+		if p.match(ast.TokenLeftParen) {
+			expr = p.finishCall(expr)
+		} else {
+			break
+		}
+	}
+	return expr
+}
+
+func (p *parser) finishCall(callee ast.Expr) ast.Expr {
+	args := make([]ast.Expr, 0)
+	if !p.check(ast.TokenRightParen) {
+		for {
+			if len(args) >= 255 {
+				p.error(p.peek(), "Can't have more than 255 arguments.")
+			}
+			args = append(args, p.assignment()) // Didn't use p.expression() because an expression can be a series!
+			if !p.match(ast.TokenComma) {
+				break
+			}
+		}
+	}
+	paren := p.consume(ast.TokenRightParen, "Expect ')' after arguments.")
+	return ast.CallExpr{Callee: callee, Paren: paren, Arguments: args}
 }
 
 func (p *parser) primary() ast.Expr {

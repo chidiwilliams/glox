@@ -20,6 +20,16 @@ func (b ExpressionStmt) Accept(visitor StmtVisitor) interface{} {
 	return visitor.VisitExpressionStmt(b)
 }
 
+type FunctionStmt struct {
+	Name   Token
+	Params []Token
+	Body   []Stmt
+}
+
+func (b FunctionStmt) Accept(visitor StmtVisitor) interface{} {
+	return visitor.VisitFunctionStmt(b)
+}
+
 type IfStmt struct {
 	Condition  Expr
 	ThenBranch Stmt
@@ -36,6 +46,15 @@ type PrintStmt struct {
 
 func (b PrintStmt) Accept(visitor StmtVisitor) interface{} {
 	return visitor.VisitPrintStmt(b)
+}
+
+type ReturnStmt struct {
+	Keyword Token
+	Value   Expr
+}
+
+func (b ReturnStmt) Accept(visitor StmtVisitor) interface{} {
+	return visitor.VisitReturnStmt(b)
 }
 
 type WhileStmt struct {
@@ -73,8 +92,10 @@ func (b VarStmt) Accept(visitor StmtVisitor) interface{} {
 type StmtVisitor interface {
 	VisitBlockStmt(stmt BlockStmt) interface{}
 	VisitExpressionStmt(stmt ExpressionStmt) interface{}
+	VisitFunctionStmt(stmt FunctionStmt) interface{}
 	VisitIfStmt(stmt IfStmt) interface{}
 	VisitPrintStmt(stmt PrintStmt) interface{}
+	VisitReturnStmt(stmt ReturnStmt) interface{}
 	VisitWhileStmt(stmt WhileStmt) interface{}
 	VisitContinueStmt(stmt ContinueStmt) interface{}
 	VisitBreakStmt(stmt BreakStmt) interface{}

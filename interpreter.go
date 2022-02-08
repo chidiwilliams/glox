@@ -7,8 +7,37 @@ import (
 )
 
 type interpreter struct {
-	// TODO: Why is this a pointer?
+	// TODO: Why are these pointers?
 	environment *environment
+	globals     *environment
+}
+
+func newInterpreter() interpreter {
+	globals := &environment{}
+	globals.define("clock", clock{})
+
+	return interpreter{globals: globals, environment: globals}
+}
+
+func (in *interpreter) VisitCallExpr(expr ast.CallExpr) interface{} {
+	callee := in.evaluate(expr.Callee)
+
+	args := make([]interface{}, 0)
+	for _, arg := range expr.Arguments {
+		args = append(args, in.evaluate(arg))
+	}
+
+	fn, ok := (callee).(callable)
+	if !ok {
+		panic(runtimeError{token: expr.Paren, msg: "Can only call functions and classes."})
+	}
+
+	if len(args) != fn.arity() {
+		panic(runtimeError{token: expr.Paren,
+			msg: fmt.Sprintf("Expected %d arguments but got %d.", fn.arity(), len(args))})
+	}
+
+	return fn.call(in, args)
 }
 
 func (in *interpreter) interpret(stmts []ast.Stmt) interface{} {
@@ -16,8 +45,9 @@ func (in *interpreter) interpret(stmts []ast.Stmt) interface{} {
 		if err := recover(); err != nil {
 			if e, ok := err.(runtimeError); ok {
 				reportRuntimeErr(e)
+			} else {
+				fmt.Printf("Error: %s\n", err)
 			}
-			fmt.Printf("Error: %s\n", err)
 		}
 	}()
 
@@ -61,13 +91,13 @@ func (in *interpreter) VisitIfStmt(stmt ast.IfStmt) interface{} {
 	return nil
 }
 
-type breakFlag struct{}
+type Break struct{}
 
 func (in *interpreter) VisitWhileStmt(stmt ast.WhileStmt) interface{} {
 	// Exit while stmt if a break is called
 	defer func() {
 		if err := recover(); err != nil {
-			if _, ok := err.(breakFlag); !ok {
+			if _, ok := err.(Break); !ok {
 				panic(err)
 			}
 		}
@@ -79,13 +109,13 @@ func (in *interpreter) VisitWhileStmt(stmt ast.WhileStmt) interface{} {
 	return nil
 }
 
-type continueFlag struct{}
+type Continue struct{}
 
 func (in *interpreter) executeLoopBody(body ast.Stmt) interface{} {
 	// Exit current body if continue panic is found
 	defer func() {
 		if err := recover(); err != nil {
-			if _, ok := err.(continueFlag); !ok {
+			if _, ok := err.(Continue); !ok {
 				panic(err)
 			}
 		}
@@ -96,11 +126,11 @@ func (in *interpreter) executeLoopBody(body ast.Stmt) interface{} {
 }
 
 func (in *interpreter) VisitContinueStmt(_ ast.ContinueStmt) interface{} {
-	panic(continueFlag{})
+	panic(Continue{})
 }
 
 func (in *interpreter) VisitBreakStmt(_ ast.BreakStmt) interface{} {
-	panic(breakFlag{})
+	panic(Break{})
 }
 
 func (in *interpreter) VisitLogicalExpr(expr ast.LogicalExpr) interface{} {
@@ -121,10 +151,28 @@ func (in *interpreter) VisitExpressionStmt(stmt ast.ExpressionStmt) interface{} 
 	return in.evaluate(stmt.Expr)
 }
 
+func (in *interpreter) VisitFunctionStmt(stmt ast.FunctionStmt) interface{} {
+	fn := function{declaration: stmt}
+	in.environment.define(stmt.Name.Lexeme, fn)
+	return nil
+}
+
 func (in *interpreter) VisitPrintStmt(stmt ast.PrintStmt) interface{} {
 	value := in.evaluate(stmt.Expr)
 	fmt.Println(in.stringify(value))
 	return nil
+}
+
+type Return struct {
+	Value interface{}
+}
+
+func (in *interpreter) VisitReturnStmt(stmt ast.ReturnStmt) interface{} {
+	var value interface{}
+	if stmt.Value != nil {
+		value = in.evaluate(stmt.Value)
+	}
+	panic(Return{Value: value})
 }
 
 func (in *interpreter) VisitAssignExpr(expr ast.AssignExpr) interface{} {
