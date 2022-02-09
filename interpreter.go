@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 
 	"glox/ast"
 )
@@ -10,13 +11,18 @@ type interpreter struct {
 	// TODO: Why are these pointers?
 	environment *environment
 	globals     *environment
+	stdOut      io.Writer
 }
 
-func newInterpreter() interpreter {
+type interpreterConfig struct {
+	stdOut io.Writer
+}
+
+func newInterpreter(config interpreterConfig) interpreter {
 	globals := &environment{}
 	globals.define("clock", clock{})
 
-	return interpreter{globals: globals, environment: globals}
+	return interpreter{globals: globals, environment: globals, stdOut: config.stdOut}
 }
 
 func (in *interpreter) VisitCallExpr(expr ast.CallExpr) interface{} {
@@ -159,7 +165,7 @@ func (in *interpreter) VisitFunctionStmt(stmt ast.FunctionStmt) interface{} {
 
 func (in *interpreter) VisitPrintStmt(stmt ast.PrintStmt) interface{} {
 	value := in.evaluate(stmt.Expr)
-	fmt.Println(in.stringify(value))
+	_, _ = in.stdOut.Write([]byte(in.stringify(value) + "\n"))
 	return nil
 }
 

@@ -14,7 +14,7 @@ var (
 	hadRuntimeError bool
 )
 
-var interp = newInterpreter()
+var interp = newInterpreter(interpreterConfig{stdOut: os.Stdout})
 
 func main() {
 	var filePath string
