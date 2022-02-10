@@ -15,35 +15,36 @@ func (p parseError) Error() string {
 /**
 Parser grammar:
 
-	program     => declaration* EOF
-	declaration => funcDecl | varDecl | statement
-	funDecl     => "fun" function
-	function    => IDENTIFIER "(" parameters? ")" block
-	parameters  => IDENTIFIER ( "," IDENTIFIER )*
-	varDecl     => "var" IDENTIFIER ( "=" expression )? ";"
-	statement   => exprStmt | ifStmt | forStmt | printStmt | returnStmt | whileStmt
+	program      => declaration* EOF
+	declaration  => funcDecl | varDecl | statement
+	funDecl      => "fun" function
+	function     => IDENTIFIER "(" parameters? ")" block
+	parameters   => IDENTIFIER ( "," IDENTIFIER )*
+	varDecl      => "var" IDENTIFIER ( "=" expression )? ";"
+	statement    => exprStmt | ifStmt | forStmt | printStmt | returnStmt | whileStmt
 									| breakStmt | continueStmt | block
-	exprStmt    => expression ";"
-	ifStmt      => "if" "(" expression ")" statement ( "else" statement )?
-	forStmt     => "for" "(" ( varDecl | exprStmt | ";" ) expression? ";" expression? ")" statement
-	printStmt   => "print" expression ";"
-	returnStmt  => "return" expression? ";"
-	whileStmt   => "while" "(" expression ")" statement
-	block       => "{" declaration* "}" ;
-	expression  => series
-	series      => assignment ( "," assignment )*
-	assignment  => IDENTIFIER "=" assignment | ternary
-	ternary     => logic_or ( "?" ternary ":" ternary )*
-	logic_or    => logic_and ( "or" logic_and )*
-	logic_and   => equality ( "and" equality )*
-	equality    => comparison ( ( "!=" | "==" ) comparison )
-	comparison  => term ( ( ">" | ">=" | "<" | "<=" ) term )*
-	term        => factor ( ( "+" | "-" ) factor )*
-	factor      => unary ( ( "/" | "*" ) unary )*
-	unary       => ( "!" | "-" ) unary | call
-	call        => primary ( "(" arguments? ")" )*
-	arguments   => expression ( "," expression )*
-	primary     => NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" | IDENTIFIER
+	exprStmt     => expression ";"
+	ifStmt       => "if" "(" expression ")" statement ( "else" statement )?
+	forStmt      => "for" "(" ( varDecl | exprStmt | ";" ) expression? ";" expression? ")" statement
+	printStmt    => "print" expression ";"
+	returnStmt   => "return" expression? ";"
+	whileStmt    => "while" "(" expression ")" statement
+	block        => "{" declaration* "}" ;
+	expression   => series
+	series       => assignment ( "," assignment )*
+	assignment   => IDENTIFIER "=" assignment | ternary
+	ternary      => logic_or ( "?" ternary ":" ternary )*
+	logic_or     => logic_and ( "or" logic_and )*
+	logic_and    => equality ( "and" equality )*
+	equality     => comparison ( ( "!=" | "==" ) comparison )
+	comparison   => term ( ( ">" | ">=" | "<" | "<=" ) term )*
+	term         => factor ( ( "+" | "-" ) factor )*
+	factor       => unary ( ( "/" | "*" ) unary )*
+	unary        => ( "!" | "-" ) unary | call
+	call         => primary ( "(" arguments? ")" )*
+	arguments    => expression ( "," expression )*
+	primary      => NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" | IDENTIFIER | functionExpr
+	functionExpr => "fun" IDENTIFIER? "(" parameters? ")" block
 
 	Reference: C Operator Precedence https://en.cppreference.com/w/c/language/operator_precedence
 
@@ -426,9 +427,43 @@ func (p *parser) primary() ast.Expr {
 		return ast.GroupingExpr{Expression: expr}
 	case p.match(ast.TokenIdentifier):
 		return ast.VariableExpr{Name: p.previous()}
+	case p.match(ast.TokenFun):
+		return p.functionExpression()
 	}
 
 	panic(p.error(p.peek(), "Expect expression."))
+}
+
+// functionExpression parses a function expression.
+// A function expression may be a named or anonymous function.
+func (p *parser) functionExpression() ast.Expr {
+	var name *ast.Token
+	if !p.check(ast.TokenLeftParen) {
+		fnName := p.consume(ast.TokenIdentifier, "Expect function name.")
+		name = &fnName
+	}
+
+	p.consume(ast.TokenLeftParen, "Expect '(' after function name.")
+
+	parameters := make([]ast.Token, 0)
+	if !p.check(ast.TokenRightParen) {
+		for {
+			if len(parameters) >= 255 {
+				p.error(p.peek(), "Can't have more than 255 parameters.")
+			}
+			parameters = append(parameters, p.consume(ast.TokenIdentifier, "Expect parameter name."))
+			if !p.match(ast.TokenComma) {
+				break
+			}
+		}
+	}
+
+	p.consume(ast.TokenRightParen, "Expect ')' after parameters")
+	p.consume(ast.TokenLeftBrace, "Expect '{' before function body.")
+
+	body := p.block()
+
+	return ast.FunctionExpr{Name: name, Params: parameters, Body: body}
 }
 
 // consume checks that the next ast.Token is of the given ast.TokenType and then

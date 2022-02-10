@@ -157,12 +157,16 @@ func (in *interpreter) VisitExpressionStmt(stmt ast.ExpressionStmt) interface{} 
 	return in.evaluate(stmt.Expr)
 }
 
+// VisitFunctionStmt creates a new function from a function statement and
+// the current environment and defines the function in the current environment
 func (in *interpreter) VisitFunctionStmt(stmt ast.FunctionStmt) interface{} {
-	fn := function{declaration: stmt}
+	fn := function{declaration: stmt, closure: in.environment}
 	in.environment.define(stmt.Name.Lexeme, fn)
 	return nil
 }
 
+// VisitPrintStmt evaluates the statement's expression and prints
+// the result to the interpreter's standard output
 func (in *interpreter) VisitPrintStmt(stmt ast.PrintStmt) interface{} {
 	value := in.evaluate(stmt.Expr)
 	_, _ = in.stdOut.Write([]byte(in.stringify(value) + "\n"))
@@ -238,6 +242,16 @@ func (in *interpreter) VisitBinaryExpr(expr ast.BinaryExpr) interface{} {
 		return right
 	}
 	return nil
+}
+
+// VisitFunctionExpr creates a new function from the function expression and the
+// current environment. The name of the function expression is defined within its block.
+func (in *interpreter) VisitFunctionExpr(expr ast.FunctionExpr) interface{} {
+	fn := functionExpr{declaration: expr, closure: &environment{enclosing: in.environment}}
+	if expr.Name != nil {
+		fn.closure.define(expr.Name.Lexeme, fn)
+	}
+	return fn
 }
 
 func (in *interpreter) VisitGroupingExpr(expr ast.GroupingExpr) interface{} {

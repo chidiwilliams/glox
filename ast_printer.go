@@ -8,6 +8,11 @@ import (
 
 type astPrinter struct{}
 
+func (a astPrinter) VisitFunctionExpr(expr ast.FunctionExpr) interface{} {
+	// TODO implement me
+	panic("implement me")
+}
+
 func (a astPrinter) VisitCallExpr(expr ast.CallExpr) interface{} {
 	// TODO implement me
 	panic("implement me")

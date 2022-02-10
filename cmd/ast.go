@@ -13,6 +13,7 @@ func main() {
 		"Assign   : Name Token, Value Expr",
 		"Binary   : Left Expr, Operator Token, Right Expr",
 		"Call     : Callee Expr, Paren Token, Arguments []Expr",
+		"Function : Name *Token, Params []Token, Body []Stmt",
 		"Grouping : Expression Expr",
 		"Literal  : Value interface{}",
 		"Logical  : Left Expr, Operator Token, Right Expr",

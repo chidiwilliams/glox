@@ -33,6 +33,16 @@ func (b CallExpr) Accept(visitor ExprVisitor) interface{} {
 	return visitor.VisitCallExpr(b)
 }
 
+type FunctionExpr struct {
+	Name   *Token
+	Params []Token
+	Body   []Stmt
+}
+
+func (b FunctionExpr) Accept(visitor ExprVisitor) interface{} {
+	return visitor.VisitFunctionExpr(b)
+}
+
 type GroupingExpr struct {
 	Expression Expr
 }
@@ -90,6 +100,7 @@ type ExprVisitor interface {
 	VisitAssignExpr(expr AssignExpr) interface{}
 	VisitBinaryExpr(expr BinaryExpr) interface{}
 	VisitCallExpr(expr CallExpr) interface{}
+	VisitFunctionExpr(expr FunctionExpr) interface{}
 	VisitGroupingExpr(expr GroupingExpr) interface{}
 	VisitLiteralExpr(expr LiteralExpr) interface{}
 	VisitLogicalExpr(expr LogicalExpr) interface{}

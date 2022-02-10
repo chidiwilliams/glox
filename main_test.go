@@ -17,6 +17,11 @@ func Test_Run(t *testing.T) {
 		{"string as boolean", "print \"\" and 34;", "34\n"},
 		{"nil as boolean", "print nil and 34;", "nil\n"},
 
+		// comments
+		{"single-line comment after source", "print 1 + 1; // hello", "2\n"},
+		{"single-line comment", `// hello
+print 1 + 1;`, "2\n"},
+
 		// unary, binary, and ternary operations
 		{"arithmetic operations", "print -1 + 2 * 3 - 4 / 5;", "4.2\n"},
 		{"logical operations", "print (!true or false) and false;", "false\n"},
@@ -104,6 +109,34 @@ sayHi("Dear", "Reader");`, "Hello, Dear Reader\n"},
 }
 
 print sayHi("Dear", "Reader");`, "Hello, Dear Reader\n"},
+		{"closure", `fun makeCounter() {
+		var i = 0;
+		fun count() {
+				i = i + 1;
+				print i;
+		}
+		return count;
+}
+
+var counter = makeCounter();
+counter();
+counter();`, "1\n2\n"},
+		{"anonymous function", `fun makeCounter() {
+		var i = 0;
+		return fun () {
+				i = i + 1;
+				print i;
+		};
+}
+
+var counter = makeCounter();
+counter();
+counter();`, "1\n2\n"},
+		{"iife", `(fun count(next) {
+		print next;
+		if (next < 5) return count(next + 1);
+		return;
+})(1);`, "1\n2\n3\n4\n5\n"},
 	}
 
 	for _, tt := range tests {
