@@ -4,7 +4,7 @@ import "glox/ast"
 
 type callable interface {
 	arity() int
-	call(in *interpreter, args []interface{}) interface{}
+	call(in *Interpreter, args []interface{}) interface{}
 }
 
 type function struct {
@@ -16,7 +16,7 @@ func (f function) arity() int {
 	return len(f.declaration.Params)
 }
 
-func (f function) call(in *interpreter, args []interface{}) (returnVal interface{}) {
+func (f function) call(interpreter *Interpreter, args []interface{}) (returnVal interface{}) {
 	defer func() {
 		if err := recover(); err != nil {
 			if v, ok := err.(Return); ok {
@@ -31,7 +31,7 @@ func (f function) call(in *interpreter, args []interface{}) (returnVal interface
 	for i, v := range f.declaration.Params {
 		env.define(v.Lexeme, args[i])
 	}
-	in.executeBlock(f.declaration.Body, &env)
+	interpreter.executeBlock(f.declaration.Body, &env)
 	return nil
 }
 
@@ -48,7 +48,7 @@ func (f functionExpr) arity() int {
 	return len(f.declaration.Params)
 }
 
-func (f functionExpr) call(in *interpreter, args []interface{}) (returnVal interface{}) {
+func (f functionExpr) call(in *Interpreter, args []interface{}) (returnVal interface{}) {
 	defer func() {
 		if err := recover(); err != nil {
 			if v, ok := err.(Return); ok {

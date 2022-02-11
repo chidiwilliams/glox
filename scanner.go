@@ -6,7 +6,9 @@ import (
 	"glox/ast"
 )
 
-type scanner struct {
+// Scanner convert a source text
+// into a slice of ast.Token-s
+type Scanner struct {
 	start   int
 	current int
 	line    int
@@ -14,7 +16,13 @@ type scanner struct {
 	tokens  []ast.Token
 }
 
-func (s *scanner) scanTokens() []ast.Token {
+// NewScanner returns a new Scanner
+func NewScanner(source string) *Scanner {
+	return &Scanner{source: source}
+}
+
+// ScanTokens returns a slice of tokens representing the source text
+func (s *Scanner) ScanTokens() []ast.Token {
 	for !s.isAtEnd() {
 		// we're at the beginning of the next lexeme
 		s.start = s.current
@@ -25,7 +33,7 @@ func (s *scanner) scanTokens() []ast.Token {
 	return s.tokens
 }
 
-func (s *scanner) scanToken() {
+func (s *Scanner) scanToken() {
 	char := s.advance()
 	switch char {
 	case '(':
@@ -117,27 +125,27 @@ func (s *scanner) scanToken() {
 	}
 }
 
-func (s *scanner) isAtEnd() bool {
+func (s *Scanner) isAtEnd() bool {
 	return s.current >= len(s.source)
 }
 
-func (s *scanner) advance() rune {
+func (s *Scanner) advance() rune {
 	curr := rune(s.source[s.current])
 	s.current++
 	return curr
 }
 
-func (s *scanner) addToken(tokenType ast.TokenType) {
+func (s *Scanner) addToken(tokenType ast.TokenType) {
 	s.addTokenWithLiteral(tokenType, nil)
 }
 
-func (s *scanner) addTokenWithLiteral(tokenType ast.TokenType, literal interface{}) {
+func (s *Scanner) addTokenWithLiteral(tokenType ast.TokenType, literal interface{}) {
 	text := s.source[s.start:s.current]
 	token := ast.Token{TokenType: tokenType, Lexeme: text, Literal: literal, Line: s.line}
 	s.tokens = append(s.tokens, token)
 }
 
-func (s *scanner) match(expected rune) bool {
+func (s *Scanner) match(expected rune) bool {
 	if s.isAtEnd() {
 		return false
 	}
@@ -150,7 +158,7 @@ func (s *scanner) match(expected rune) bool {
 	return true
 }
 
-func (s *scanner) string() {
+func (s *Scanner) string() {
 	for s.peek() != '"' && !s.isAtEnd() {
 		if s.peek() == '\n' {
 			s.line++
@@ -169,11 +177,11 @@ func (s *scanner) string() {
 	s.addTokenWithLiteral(ast.TokenString, value)
 }
 
-func (s *scanner) isDigit(r rune) bool {
+func (s *Scanner) isDigit(r rune) bool {
 	return r >= '0' && r <= '9'
 }
 
-func (s *scanner) number() {
+func (s *Scanner) number() {
 	for s.isDigit(s.peek()) {
 		s.advance()
 	}
@@ -190,21 +198,21 @@ func (s *scanner) number() {
 	s.addTokenWithLiteral(ast.TokenNumber, val)
 }
 
-func (s *scanner) peek() rune {
+func (s *Scanner) peek() rune {
 	if s.isAtEnd() {
 		return '\000'
 	}
 	return rune(s.source[s.current])
 }
 
-func (s *scanner) peekNext() rune {
+func (s *Scanner) peekNext() rune {
 	if s.current+1 >= len(s.source) {
 		return '\000'
 	}
 	return rune(s.source[s.current+1])
 }
 
-func (s *scanner) isAlpha(char rune) bool {
+func (s *Scanner) isAlpha(char rune) bool {
 	return (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char == '_')
 }
 
@@ -229,7 +237,7 @@ var keywords = map[string]ast.TokenType{
 	"continue": ast.TokenContinue,
 }
 
-func (s *scanner) identifier() {
+func (s *Scanner) identifier() {
 	for s.isAlphaNumeric(s.peek()) {
 		s.advance()
 	}
@@ -242,6 +250,6 @@ func (s *scanner) identifier() {
 	s.addToken(tokenType)
 }
 
-func (s *scanner) isAlphaNumeric(char rune) bool {
+func (s *Scanner) isAlphaNumeric(char rune) bool {
 	return s.isAlpha(char) || s.isDigit(char)
 }

@@ -12,6 +12,19 @@ func (p parseError) Error() string {
 	return p.msg
 }
 
+// Parser parses a flat list of tokens into
+// an AST representation of the source program
+type Parser struct {
+	tokens  []ast.Token
+	current int
+	loop    int
+}
+
+// NewParser returns a new Parser that reads a list of tokens
+func NewParser(tokens []ast.Token) *Parser {
+	return &Parser{tokens: tokens}
+}
+
 /**
 Parser grammar:
 
@@ -50,13 +63,9 @@ Parser grammar:
 
 */
 
-type parser struct {
-	tokens  []ast.Token
-	current int
-	loop    int
-}
-
-func (p *parser) parse() []ast.Stmt {
+// Parse reads the list of tokens and returns a
+// list of statements representing the source program
+func (p *Parser) Parse() []ast.Stmt {
 	var statements []ast.Stmt
 	for !p.isAtEnd() {
 		statements = append(statements, p.declaration())
@@ -67,7 +76,7 @@ func (p *parser) parse() []ast.Stmt {
 // declaration parses declaration statements. A declaration statement is
 // a variable declaration or a regular statement. If the statement contains
 // a parse error, it skips to the start of the next statement and returns nil.
-func (p *parser) declaration() ast.Stmt {
+func (p *Parser) declaration() ast.Stmt {
 	defer func() {
 		if err := recover(); err != nil {
 			// If the error is a parseError, synchronize to
@@ -89,7 +98,7 @@ func (p *parser) declaration() ast.Stmt {
 	return p.statement()
 }
 
-func (p *parser) varDeclaration() ast.Stmt {
+func (p *Parser) varDeclaration() ast.Stmt {
 	name := p.consume(ast.TokenIdentifier, "Expect variable name")
 	var initializer ast.Expr
 	if p.match(ast.TokenEqual) {
@@ -101,7 +110,7 @@ func (p *parser) varDeclaration() ast.Stmt {
 
 // statement parses statements. A statement can be a print,
 // if, while, block or expression statement.
-func (p *parser) statement() ast.Stmt {
+func (p *Parser) statement() ast.Stmt {
 	if p.match(ast.TokenPrint) {
 		return p.printStatement()
 	}
@@ -141,7 +150,7 @@ func (p *parser) statement() ast.Stmt {
 	return p.expressionStatement()
 }
 
-func (p *parser) forStatement() ast.Stmt {
+func (p *Parser) forStatement() ast.Stmt {
 	p.consume(ast.TokenLeftParen, "Expect '(' after 'for'.")
 
 	var initializer ast.Stmt
@@ -182,13 +191,13 @@ func (p *parser) forStatement() ast.Stmt {
 	return body
 }
 
-func (p *parser) printStatement() ast.Stmt {
+func (p *Parser) printStatement() ast.Stmt {
 	expr := p.expression()
 	p.consume(ast.TokenSemicolon, "Expect ';' after value")
 	return ast.PrintStmt{Expr: expr}
 }
 
-func (p *parser) returnStatement() ast.Stmt {
+func (p *Parser) returnStatement() ast.Stmt {
 	keyword := p.previous()
 	var value ast.Expr
 	if !p.check(ast.TokenSemicolon) {
@@ -198,7 +207,7 @@ func (p *parser) returnStatement() ast.Stmt {
 	return ast.ReturnStmt{Keyword: keyword, Value: value}
 }
 
-func (p *parser) block() []ast.Stmt {
+func (p *Parser) block() []ast.Stmt {
 	var statements []ast.Stmt
 	for !p.check(ast.TokenRightBrace) && !p.isAtEnd() {
 		statements = append(statements, p.declaration())
@@ -207,7 +216,7 @@ func (p *parser) block() []ast.Stmt {
 	return statements
 }
 
-func (p *parser) ifStatement() ast.Stmt {
+func (p *Parser) ifStatement() ast.Stmt {
 	p.consume(ast.TokenLeftParen, "Expect '(' after 'if'.")
 	condition := p.expression()
 	p.consume(ast.TokenRightParen, "Expect ')' after if condition.")
@@ -221,7 +230,7 @@ func (p *parser) ifStatement() ast.Stmt {
 	return ast.IfStmt{Condition: condition, ThenBranch: thenBranch, ElseBranch: elseBranch}
 }
 
-func (p *parser) whileStatement() ast.Stmt {
+func (p *Parser) whileStatement() ast.Stmt {
 	p.consume(ast.TokenLeftParen, "Expect '(' after 'while'.")
 	condition := p.expression()
 	p.consume(ast.TokenRightParen, "Expect ')' after while condition.")
@@ -230,7 +239,7 @@ func (p *parser) whileStatement() ast.Stmt {
 }
 
 // expressionStatement parses expression statements
-func (p *parser) expressionStatement() ast.Stmt {
+func (p *Parser) expressionStatement() ast.Stmt {
 	// parse the next expression
 	expr := p.expression()
 	// panic if the next token is not a semicolon
@@ -238,7 +247,7 @@ func (p *parser) expressionStatement() ast.Stmt {
 	return ast.ExpressionStmt{Expr: expr}
 }
 
-func (p *parser) function(kind string) ast.Stmt {
+func (p *Parser) function(kind string) ast.Stmt {
 	name := p.consume(ast.TokenIdentifier, "Expect "+kind+" name.")
 	p.consume(ast.TokenLeftParen, "Expect '(' after "+kind+" name.")
 
@@ -262,11 +271,11 @@ func (p *parser) function(kind string) ast.Stmt {
 	return ast.FunctionStmt{Name: name, Params: parameters, Body: body}
 }
 
-func (p *parser) expression() ast.Expr {
+func (p *Parser) expression() ast.Expr {
 	return p.series()
 }
 
-func (p *parser) series() ast.Expr {
+func (p *Parser) series() ast.Expr {
 	expr := p.assignment()
 	for p.match(ast.TokenComma) {
 		operator := p.previous()
@@ -277,7 +286,7 @@ func (p *parser) series() ast.Expr {
 	return expr
 }
 
-func (p *parser) assignment() ast.Expr {
+func (p *Parser) assignment() ast.Expr {
 	expr := p.ternary()
 	if p.match(ast.TokenEqual) {
 		equals := p.previous()
@@ -291,7 +300,7 @@ func (p *parser) assignment() ast.Expr {
 	return expr
 }
 
-func (p *parser) ternary() ast.Expr {
+func (p *Parser) ternary() ast.Expr {
 	expr := p.or()
 
 	if p.match(ast.TokenQuestionMark) {
@@ -304,7 +313,7 @@ func (p *parser) ternary() ast.Expr {
 	return expr
 }
 
-func (p *parser) or() ast.Expr {
+func (p *Parser) or() ast.Expr {
 	expr := p.and()
 	for p.match(ast.TokenOr) {
 		operator := p.previous()
@@ -314,7 +323,7 @@ func (p *parser) or() ast.Expr {
 	return expr
 }
 
-func (p *parser) and() ast.Expr {
+func (p *Parser) and() ast.Expr {
 	expr := p.equality()
 	for p.match(ast.TokenAnd) {
 		operator := p.previous()
@@ -324,7 +333,7 @@ func (p *parser) and() ast.Expr {
 	return expr
 }
 
-func (p *parser) equality() ast.Expr {
+func (p *Parser) equality() ast.Expr {
 	expr := p.comparison()
 
 	for p.match(ast.TokenBangEqual, ast.TokenEqualEqual) {
@@ -336,7 +345,7 @@ func (p *parser) equality() ast.Expr {
 	return expr
 }
 
-func (p *parser) comparison() ast.Expr {
+func (p *Parser) comparison() ast.Expr {
 	expr := p.term()
 
 	for p.match(ast.TokenGreater, ast.TokenGreaterEqual, ast.TokenLess, ast.TokenLessEqual) {
@@ -348,7 +357,7 @@ func (p *parser) comparison() ast.Expr {
 	return expr
 }
 
-func (p *parser) term() ast.Expr {
+func (p *Parser) term() ast.Expr {
 	expr := p.factor()
 
 	for p.match(ast.TokenMinus, ast.TokenPlus) {
@@ -360,7 +369,7 @@ func (p *parser) term() ast.Expr {
 	return expr
 }
 
-func (p *parser) factor() ast.Expr {
+func (p *Parser) factor() ast.Expr {
 	expr := p.unary()
 
 	for p.match(ast.TokenSlash, ast.TokenStar) {
@@ -372,7 +381,7 @@ func (p *parser) factor() ast.Expr {
 	return expr
 }
 
-func (p *parser) unary() ast.Expr {
+func (p *Parser) unary() ast.Expr {
 	if p.match(ast.TokenBang, ast.TokenMinus) {
 		operator := p.previous()
 		right := p.unary()
@@ -382,7 +391,7 @@ func (p *parser) unary() ast.Expr {
 	return p.call()
 }
 
-func (p *parser) call() ast.Expr {
+func (p *Parser) call() ast.Expr {
 	expr := p.primary()
 	for {
 		if p.match(ast.TokenLeftParen) {
@@ -394,7 +403,7 @@ func (p *parser) call() ast.Expr {
 	return expr
 }
 
-func (p *parser) finishCall(callee ast.Expr) ast.Expr {
+func (p *Parser) finishCall(callee ast.Expr) ast.Expr {
 	args := make([]ast.Expr, 0)
 	if !p.check(ast.TokenRightParen) {
 		for {
@@ -411,7 +420,7 @@ func (p *parser) finishCall(callee ast.Expr) ast.Expr {
 	return ast.CallExpr{Callee: callee, Paren: paren, Arguments: args}
 }
 
-func (p *parser) primary() ast.Expr {
+func (p *Parser) primary() ast.Expr {
 	switch {
 	case p.match(ast.TokenFalse):
 		return ast.LiteralExpr{Value: false}
@@ -436,7 +445,7 @@ func (p *parser) primary() ast.Expr {
 
 // functionExpression parses a function expression.
 // A function expression may be a named or anonymous function.
-func (p *parser) functionExpression() ast.Expr {
+func (p *Parser) functionExpression() ast.Expr {
 	var name *ast.Token
 	if !p.check(ast.TokenLeftParen) {
 		fnName := p.consume(ast.TokenIdentifier, "Expect function name.")
@@ -468,19 +477,19 @@ func (p *parser) functionExpression() ast.Expr {
 
 // consume checks that the next ast.Token is of the given ast.TokenType and then
 // advances to the next token. If the check fails, it panics with the given message.
-func (p *parser) consume(tokenType ast.TokenType, message string) ast.Token {
+func (p *Parser) consume(tokenType ast.TokenType, message string) ast.Token {
 	if p.check(tokenType) {
 		return p.advance()
 	}
 	panic(p.error(p.peek(), message))
 }
 
-func (p *parser) error(Token ast.Token, message string) error {
+func (p *Parser) error(Token ast.Token, message string) error {
 	reportTokenErr(Token, message)
 	return parseError{}
 }
 
-func (p *parser) synchronize() {
+func (p *Parser) synchronize() {
 	p.advance()
 	for !p.isAtEnd() {
 		if p.previous().TokenType == ast.TokenSemicolon {
@@ -498,7 +507,7 @@ func (p *parser) synchronize() {
 	}
 }
 
-func (p *parser) match(types ...ast.TokenType) bool {
+func (p *Parser) match(types ...ast.TokenType) bool {
 	for _, tokenType := range types {
 		if p.check(tokenType) {
 			p.advance()
@@ -509,7 +518,7 @@ func (p *parser) match(types ...ast.TokenType) bool {
 	return false
 }
 
-func (p *parser) check(tokenType ast.TokenType) bool {
+func (p *Parser) check(tokenType ast.TokenType) bool {
 	if p.isAtEnd() {
 		return false
 	}
@@ -517,21 +526,21 @@ func (p *parser) check(tokenType ast.TokenType) bool {
 	return p.peek().TokenType == tokenType
 }
 
-func (p *parser) advance() ast.Token {
+func (p *Parser) advance() ast.Token {
 	if !p.isAtEnd() {
 		p.current++
 	}
 	return p.previous()
 }
 
-func (p *parser) isAtEnd() bool {
+func (p *Parser) isAtEnd() bool {
 	return p.peek().TokenType == ast.TokenEof
 }
 
-func (p *parser) peek() ast.Token {
+func (p *Parser) peek() ast.Token {
 	return p.tokens[p.current]
 }
 
-func (p *parser) previous() ast.Token {
+func (p *Parser) previous() ast.Token {
 	return p.tokens[p.current-1]
 }

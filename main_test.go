@@ -24,6 +24,7 @@ print 1 + 1;`, "2\n"},
 
 		// unary, binary, and ternary operations
 		{"arithmetic operations", "print -1 + 2 * 3 - 4 / 5;", "4.2\n"},
+		{"decimal arithmetic", "print 1.234 / 5.678;", "0.2173300457907714\n"},
 		{"logical operations", "print (!true or false) and false;", "false\n"},
 		{"ternary", "print 3 < 4 ? 2 > 5 ? \"no\" : \"yes\" : \"also no\";", "yes\n"},
 		{"string concatenation", "print \"hello\" + \" \" + \"world\";", "hello world\n"},
@@ -141,15 +142,15 @@ counter();`, "1\n2\n"},
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := scanner{source: tt.source}
-			tokens := s.scanTokens()
+			scanner := NewScanner(tt.source)
+			tokens := scanner.ScanTokens()
 
-			p := parser{tokens: tokens}
-			statements := p.parse()
+			parser := NewParser(tokens)
+			statements := parser.Parse()
 
 			stdOut := &bytes.Buffer{}
-			interp := newInterpreter(interpreterConfig{stdOut: stdOut})
-			interp.interpret(statements)
+			interpreter := NewInterpreter(InterpreterConfig{StdOut: stdOut})
+			interpreter.Interpret(statements)
 
 			if stdOut.String() != tt.stdOut {
 				t.Fatalf("stdOut: got %s, expected %s", stdOut, tt.stdOut)

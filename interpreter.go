@@ -7,25 +7,53 @@ import (
 	"glox/ast"
 )
 
-type interpreter struct {
+// Interpreter holds the globals and current execution
+// environment for a program to be executed
+type Interpreter struct {
 	// TODO: Why are these pointers?
+	// current execution environment
 	environment *environment
-	globals     *environment
-	stdOut      io.Writer
-}
-
-type interpreterConfig struct {
+	// global variables
+	globals *environment
+	// standard output
 	stdOut io.Writer
 }
 
-func newInterpreter(config interpreterConfig) interpreter {
+// InterpreterConfig holds the configuration for an interpreter
+type InterpreterConfig struct {
+	// Standard output, defaults to io.Stdout
+	StdOut io.Writer
+}
+
+// NewInterpreter sets up a new interpreter with its environment and config
+func NewInterpreter(config InterpreterConfig) *Interpreter {
 	globals := &environment{}
 	globals.define("clock", clock{})
 
-	return interpreter{globals: globals, environment: globals, stdOut: config.stdOut}
+	return &Interpreter{globals: globals, environment: globals, stdOut: config.StdOut}
 }
 
-func (in *interpreter) VisitCallExpr(expr ast.CallExpr) interface{} {
+// Interpret interprets a list of statements within the interpreter's environment
+func (in *Interpreter) Interpret(stmts []ast.Stmt) interface{} {
+	defer func() {
+		if err := recover(); err != nil {
+			if e, ok := err.(runtimeError); ok {
+				reportRuntimeErr(e)
+			} else {
+				fmt.Printf("Error: %s\n", err)
+			}
+		}
+	}()
+
+	var result interface{}
+	for _, statement := range stmts {
+		result = in.execute(statement)
+	}
+
+	return result
+}
+
+func (in *Interpreter) VisitCallExpr(expr ast.CallExpr) interface{} {
 	callee := in.evaluate(expr.Callee)
 
 	args := make([]interface{}, 0)
@@ -46,40 +74,21 @@ func (in *interpreter) VisitCallExpr(expr ast.CallExpr) interface{} {
 	return fn.call(in, args)
 }
 
-func (in *interpreter) interpret(stmts []ast.Stmt) interface{} {
-	defer func() {
-		if err := recover(); err != nil {
-			if e, ok := err.(runtimeError); ok {
-				reportRuntimeErr(e)
-			} else {
-				fmt.Printf("Error: %s\n", err)
-			}
-		}
-	}()
-
-	var result interface{}
-	for _, statement := range stmts {
-		result = in.execute(statement)
-	}
-
-	return result
-}
-
-func (in *interpreter) execute(stmt ast.Stmt) interface{} {
+func (in *Interpreter) execute(stmt ast.Stmt) interface{} {
 	return stmt.Accept(in)
 }
 
-func (in *interpreter) evaluate(expr ast.Expr) interface{} {
+func (in *Interpreter) evaluate(expr ast.Expr) interface{} {
 	return expr.Accept(in)
 }
 
-func (in *interpreter) VisitBlockStmt(stmt ast.BlockStmt) interface{} {
+func (in *Interpreter) VisitBlockStmt(stmt ast.BlockStmt) interface{} {
 	// TODO: Why do I need to pass in a pointer here
 	in.executeBlock(stmt.Statements, &environment{enclosing: in.environment})
 	return nil
 }
 
-func (in *interpreter) VisitVarStmt(stmt ast.VarStmt) interface{} {
+func (in *Interpreter) VisitVarStmt(stmt ast.VarStmt) interface{} {
 	var val interface{}
 	if stmt.Initializer != nil {
 		val = in.evaluate(stmt.Initializer)
@@ -88,7 +97,7 @@ func (in *interpreter) VisitVarStmt(stmt ast.VarStmt) interface{} {
 	return nil
 }
 
-func (in *interpreter) VisitIfStmt(stmt ast.IfStmt) interface{} {
+func (in *Interpreter) VisitIfStmt(stmt ast.IfStmt) interface{} {
 	if in.isTruthy(in.evaluate(stmt.Condition)) {
 		in.execute(stmt.ThenBranch)
 	} else if stmt.ElseBranch != nil {
@@ -99,7 +108,7 @@ func (in *interpreter) VisitIfStmt(stmt ast.IfStmt) interface{} {
 
 type Break struct{}
 
-func (in *interpreter) VisitWhileStmt(stmt ast.WhileStmt) interface{} {
+func (in *Interpreter) VisitWhileStmt(stmt ast.WhileStmt) interface{} {
 	// Exit while stmt if a break is called
 	defer func() {
 		if err := recover(); err != nil {
@@ -117,7 +126,7 @@ func (in *interpreter) VisitWhileStmt(stmt ast.WhileStmt) interface{} {
 
 type Continue struct{}
 
-func (in *interpreter) executeLoopBody(body ast.Stmt) interface{} {
+func (in *Interpreter) executeLoopBody(body ast.Stmt) interface{} {
 	// Exit current body if continue panic is found
 	defer func() {
 		if err := recover(); err != nil {
@@ -131,15 +140,15 @@ func (in *interpreter) executeLoopBody(body ast.Stmt) interface{} {
 	return nil
 }
 
-func (in *interpreter) VisitContinueStmt(_ ast.ContinueStmt) interface{} {
+func (in *Interpreter) VisitContinueStmt(_ ast.ContinueStmt) interface{} {
 	panic(Continue{})
 }
 
-func (in *interpreter) VisitBreakStmt(_ ast.BreakStmt) interface{} {
+func (in *Interpreter) VisitBreakStmt(_ ast.BreakStmt) interface{} {
 	panic(Break{})
 }
 
-func (in *interpreter) VisitLogicalExpr(expr ast.LogicalExpr) interface{} {
+func (in *Interpreter) VisitLogicalExpr(expr ast.LogicalExpr) interface{} {
 	left := in.evaluate(expr.Left)
 	if expr.Operator.TokenType == ast.TokenOr {
 		if in.isTruthy(left) {
@@ -153,13 +162,13 @@ func (in *interpreter) VisitLogicalExpr(expr ast.LogicalExpr) interface{} {
 	return in.evaluate(expr.Right)
 }
 
-func (in *interpreter) VisitExpressionStmt(stmt ast.ExpressionStmt) interface{} {
+func (in *Interpreter) VisitExpressionStmt(stmt ast.ExpressionStmt) interface{} {
 	return in.evaluate(stmt.Expr)
 }
 
 // VisitFunctionStmt creates a new function from a function statement and
 // the current environment and defines the function in the current environment
-func (in *interpreter) VisitFunctionStmt(stmt ast.FunctionStmt) interface{} {
+func (in *Interpreter) VisitFunctionStmt(stmt ast.FunctionStmt) interface{} {
 	fn := function{declaration: stmt, closure: in.environment}
 	in.environment.define(stmt.Name.Lexeme, fn)
 	return nil
@@ -167,7 +176,7 @@ func (in *interpreter) VisitFunctionStmt(stmt ast.FunctionStmt) interface{} {
 
 // VisitPrintStmt evaluates the statement's expression and prints
 // the result to the interpreter's standard output
-func (in *interpreter) VisitPrintStmt(stmt ast.PrintStmt) interface{} {
+func (in *Interpreter) VisitPrintStmt(stmt ast.PrintStmt) interface{} {
 	value := in.evaluate(stmt.Expr)
 	_, _ = in.stdOut.Write([]byte(in.stringify(value) + "\n"))
 	return nil
@@ -177,7 +186,7 @@ type Return struct {
 	Value interface{}
 }
 
-func (in *interpreter) VisitReturnStmt(stmt ast.ReturnStmt) interface{} {
+func (in *Interpreter) VisitReturnStmt(stmt ast.ReturnStmt) interface{} {
 	var value interface{}
 	if stmt.Value != nil {
 		value = in.evaluate(stmt.Value)
@@ -185,17 +194,17 @@ func (in *interpreter) VisitReturnStmt(stmt ast.ReturnStmt) interface{} {
 	panic(Return{Value: value})
 }
 
-func (in *interpreter) VisitAssignExpr(expr ast.AssignExpr) interface{} {
+func (in *Interpreter) VisitAssignExpr(expr ast.AssignExpr) interface{} {
 	val := in.evaluate(expr.Value)
 	in.environment.assign(expr.Name, val)
 	return val
 }
 
-func (in *interpreter) VisitVariableExpr(expr ast.VariableExpr) interface{} {
+func (in *Interpreter) VisitVariableExpr(expr ast.VariableExpr) interface{} {
 	return in.environment.get(expr.Name)
 }
 
-func (in *interpreter) VisitBinaryExpr(expr ast.BinaryExpr) interface{} {
+func (in *Interpreter) VisitBinaryExpr(expr ast.BinaryExpr) interface{} {
 	left := in.evaluate(expr.Left)
 	right := in.evaluate(expr.Right)
 
@@ -246,7 +255,7 @@ func (in *interpreter) VisitBinaryExpr(expr ast.BinaryExpr) interface{} {
 
 // VisitFunctionExpr creates a new function from the function expression and the
 // current environment. The name of the function expression is defined within its block.
-func (in *interpreter) VisitFunctionExpr(expr ast.FunctionExpr) interface{} {
+func (in *Interpreter) VisitFunctionExpr(expr ast.FunctionExpr) interface{} {
 	fn := functionExpr{declaration: expr, closure: &environment{enclosing: in.environment}}
 	if expr.Name != nil {
 		fn.closure.define(expr.Name.Lexeme, fn)
@@ -254,15 +263,15 @@ func (in *interpreter) VisitFunctionExpr(expr ast.FunctionExpr) interface{} {
 	return fn
 }
 
-func (in *interpreter) VisitGroupingExpr(expr ast.GroupingExpr) interface{} {
+func (in *Interpreter) VisitGroupingExpr(expr ast.GroupingExpr) interface{} {
 	return in.evaluate(expr.Expression)
 }
 
-func (in *interpreter) VisitLiteralExpr(expr ast.LiteralExpr) interface{} {
+func (in *Interpreter) VisitLiteralExpr(expr ast.LiteralExpr) interface{} {
 	return expr.Value
 }
 
-func (in *interpreter) VisitUnaryExpr(expr ast.UnaryExpr) interface{} {
+func (in *Interpreter) VisitUnaryExpr(expr ast.UnaryExpr) interface{} {
 	right := in.evaluate(expr.Right)
 	switch expr.Operator.TokenType {
 	case ast.TokenBang:
@@ -274,7 +283,7 @@ func (in *interpreter) VisitUnaryExpr(expr ast.UnaryExpr) interface{} {
 	return nil
 }
 
-func (in *interpreter) VisitTernaryExpr(expr ast.TernaryExpr) interface{} {
+func (in *Interpreter) VisitTernaryExpr(expr ast.TernaryExpr) interface{} {
 	cond := in.evaluate(expr.Cond)
 	if in.isTruthy(cond) {
 		return in.evaluate(expr.Left)
@@ -282,7 +291,7 @@ func (in *interpreter) VisitTernaryExpr(expr ast.TernaryExpr) interface{} {
 	return in.evaluate(expr.Right)
 }
 
-func (in *interpreter) executeBlock(statements []ast.Stmt, env *environment) {
+func (in *Interpreter) executeBlock(statements []ast.Stmt, env *environment) {
 	previous := in.environment
 	defer func() { in.environment = previous }()
 
@@ -292,7 +301,7 @@ func (in *interpreter) executeBlock(statements []ast.Stmt, env *environment) {
 	}
 }
 
-func (in *interpreter) isTruthy(val interface{}) bool {
+func (in *Interpreter) isTruthy(val interface{}) bool {
 	if val == nil {
 		return false
 	}
@@ -302,14 +311,14 @@ func (in *interpreter) isTruthy(val interface{}) bool {
 	return true
 }
 
-func (in *interpreter) checkNumberOperand(operator ast.Token, operand interface{}) {
+func (in *Interpreter) checkNumberOperand(operator ast.Token, operand interface{}) {
 	if _, ok := operand.(float64); ok {
 		return
 	}
 	panic(runtimeError{operator, "Operand must be a number"})
 }
 
-func (in *interpreter) checkNumberOperands(operator ast.Token, left interface{}, right interface{}) {
+func (in *Interpreter) checkNumberOperands(operator ast.Token, left interface{}, right interface{}) {
 	if _, ok := left.(float64); ok {
 		if _, ok = right.(float64); ok {
 			return
@@ -318,7 +327,7 @@ func (in *interpreter) checkNumberOperands(operator ast.Token, left interface{},
 	panic(runtimeError{operator, "Operands must be number"})
 }
 
-func (in *interpreter) stringify(value interface{}) string {
+func (in *Interpreter) stringify(value interface{}) string {
 	if value == nil {
 		return "nil"
 	}

@@ -8,7 +8,7 @@ func (c clock) arity() int {
 	return 0
 }
 
-func (c clock) call(_ *interpreter, _ []interface{}) interface{} {
+func (c clock) call(_ *Interpreter, _ []interface{}) interface{} {
 	return float64(time.Now().UnixMilli())
 }
 
