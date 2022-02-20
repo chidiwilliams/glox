@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 )
@@ -56,12 +57,13 @@ func runFile(path string) {
 	}
 }
 
-func newRunner(config InterpreterConfig) runner {
-	return runner{interpreter: NewInterpreter(config)}
+func newRunner(stdOut io.Writer, stdErr io.Writer) runner {
+	return runner{interpreter: NewInterpreter(stdOut, stdErr), stdErr: stdErr}
 }
 
 type runner struct {
 	interpreter *Interpreter
+	stdErr      io.Writer
 }
 
 func (r runner) run(source string) {
@@ -75,7 +77,7 @@ func (r runner) run(source string) {
 		return
 	}
 
-	resolver := NewResolver(r.interpreter)
+	resolver := NewResolver(r.interpreter, r.stdErr)
 	resolver.resolveStmts(statements)
 
 	if hadError {
@@ -87,6 +89,6 @@ func (r runner) run(source string) {
 }
 
 func run(source string) {
-	r := newRunner(InterpreterConfig{StdOut: os.Stdout})
+	r := newRunner(os.Stdout, os.Stderr)
 	r.run(source)
 }

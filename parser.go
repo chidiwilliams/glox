@@ -485,7 +485,7 @@ func (p *Parser) consume(tokenType ast.TokenType, message string) ast.Token {
 }
 
 func (p *Parser) error(Token ast.Token, message string) error {
-	reportTokenErr(Token, message)
+	reportTokenErr(nil, Token, message)
 	return parseError{}
 }
 

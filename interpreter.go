@@ -17,25 +17,22 @@ type Interpreter struct {
 	globals *environment
 	// standard output
 	stdOut io.Writer
+	// standard error
+	stdErr io.Writer
 	// pointer, else compares same pointer
 	locals map[ast.Expr]int
 }
 
-// InterpreterConfig holds the configuration for an interpreter
-type InterpreterConfig struct {
-	// Standard output, defaults to io.Stdout
-	StdOut io.Writer
-}
-
 // NewInterpreter sets up a new interpreter with its environment and config
-func NewInterpreter(config InterpreterConfig) *Interpreter {
+func NewInterpreter(stdOut io.Writer, stdErr io.Writer) *Interpreter {
 	globals := &environment{}
 	globals.define("clock", clock{})
 
 	return &Interpreter{
 		globals:     globals,
 		environment: globals,
-		stdOut:      config.StdOut,
+		stdOut:      stdOut,
+		stdErr:      stdErr,
 		locals:      make(map[ast.Expr]int),
 	}
 }
@@ -45,7 +42,7 @@ func (in *Interpreter) Interpret(stmts []ast.Stmt) interface{} {
 	defer func() {
 		if err := recover(); err != nil {
 			if e, ok := err.(runtimeError); ok {
-				reportRuntimeErr(e)
+				reportRuntimeErr(in.stdErr, e)
 			} else {
 				fmt.Printf("Error: %s\n", err)
 			}

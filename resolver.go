@@ -1,6 +1,10 @@
 package main
 
-import "glox/ast"
+import (
+	"io"
+
+	"glox/ast"
+)
 
 type functionType int
 
@@ -9,22 +13,23 @@ const (
 	functionTypeFunction
 )
 
-// scope is a map of all the local variables defined
-// in the current scope. A key corresponding to the
-// variable name exists in the map when the variable
-// is declared. The value of the key (true/false)
-// says whether the variable has been defined or not.
+// scope describes all the local variables
+// declared and defined in the current scope
 type scope map[string]bool
 
+// declare a variable with the given name in this scope
 func (s scope) declare(name string) {
 	s[name] = false
 }
 
+// define a variable with the given name in this scope
 func (s scope) define(name string) {
 	s[name] = true
 }
 
-func (s scope) get(name string) (declared, defined bool) {
+// has returns whether a variable with the given
+// name is declared and defined in this scope
+func (s scope) has(name string) (declared, defined bool) {
 	v, ok := s[name]
 	return v, ok
 }
@@ -42,11 +47,12 @@ type Resolver struct {
 	// the field to report an error when a return
 	// statement appears outside a function
 	currentFunction functionType
+	stdErr          io.Writer
 }
 
 // NewResolver returns a new Resolver
-func NewResolver(interpreter *Interpreter) *Resolver {
-	return &Resolver{interpreter: interpreter}
+func NewResolver(interpreter *Interpreter, stdErr io.Writer) *Resolver {
+	return &Resolver{interpreter: interpreter, stdErr: stdErr}
 }
 
 // resolveExpr resolves an expression
@@ -170,8 +176,8 @@ func (r *Resolver) VisitUnaryExpr(expr ast.UnaryExpr) interface{} {
 
 func (r *Resolver) VisitVariableExpr(expr ast.VariableExpr) interface{} {
 	if len(r.scopes) > 0 {
-		if defined, declared := r.scopes[len(r.scopes)-1].get(expr.Name.Lexeme); declared && !defined { // if the variable name is declared but not defined, report error
-			reportTokenErr(expr.Name, "Can't read local variable in its own initializer.")
+		if declared, defined := r.scopes[len(r.scopes)-1].has(expr.Name.Lexeme); declared && !defined { // if the variable name is declared but not defined, report error
+			reportTokenErr(r.stdErr, expr.Name, "Can't read local variable in its own initializer.")
 		}
 	}
 
@@ -214,7 +220,7 @@ func (r *Resolver) VisitPrintStmt(stmt ast.PrintStmt) interface{} {
 
 func (r *Resolver) VisitReturnStmt(stmt ast.ReturnStmt) interface{} {
 	if r.currentFunction == functionTypeNone {
-		reportTokenErr(stmt.Keyword, "Can't return from top-level code.")
+		reportTokenErr(r.stdErr, stmt.Keyword, "Can't return from top-level code.")
 	}
 
 	if stmt.Value != nil {
@@ -256,8 +262,8 @@ func (r *Resolver) declare(name ast.Token) {
 	}
 
 	sc := r.scopes[len(r.scopes)-1]
-	if _, defined := sc.get(name.Lexeme); defined {
-		reportTokenErr(name, "Already a variable with this name in this scope")
+	if _, defined := sc.has(name.Lexeme); defined {
+		reportTokenErr(r.stdErr, name, "Already a variable with this name in this scope")
 	}
 
 	sc.declare(name.Lexeme)
@@ -279,7 +285,7 @@ func (r *Resolver) define(name ast.Token) {
 // where the variable is accessed and the scope where the variable was defined.
 func (r *Resolver) resolveLocal(expr ast.Expr, name ast.Token) {
 	for i := len(r.scopes) - 1; i >= 0; i-- {
-		if _, defined := r.scopes[i].get(name.Lexeme); defined {
+		if _, defined := r.scopes[i].has(name.Lexeme); defined {
 			depth := len(r.scopes) - 1 - i
 			r.interpreter.resolve(expr, depth)
 			return
