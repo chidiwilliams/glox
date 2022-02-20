@@ -138,19 +138,24 @@ counter();`, "1\n2\n"},
 		if (next < 5) return count(next + 1);
 		return;
 })(1);`, "1\n2\n3\n4\n5\n"},
+
+		{"scoping", `var a = "global";
+{
+		fun showA() {
+				print a;
+		}
+
+		showA();
+		var a = "block";
+		showA();
+}`, "global\nglobal\n"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			scanner := NewScanner(tt.source)
-			tokens := scanner.ScanTokens()
-
-			parser := NewParser(tokens)
-			statements := parser.Parse()
-
 			stdOut := &bytes.Buffer{}
-			interpreter := NewInterpreter(InterpreterConfig{StdOut: stdOut})
-			interpreter.Interpret(statements)
+			r := newRunner(InterpreterConfig{StdOut: stdOut})
+			r.run(tt.source)
 
 			if stdOut.String() != tt.stdOut {
 				t.Fatalf("stdOut: got %s, expected %s", stdOut, tt.stdOut)

@@ -63,6 +63,10 @@ type Token struct {
 	Lexeme    string
 	Literal   interface{}
 	Line      int
+	// Index from the start of the program.
+	// At the moment, I use this only to discriminate identifier
+	// tokens on the same line in the interpreter's locals map
+	Start int
 }
 
 func (t Token) String() string {

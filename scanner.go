@@ -107,6 +107,7 @@ func (s *Scanner) scanToken() {
 	case ' ':
 	case '\r':
 	case '\t':
+
 	case '\n':
 		s.line++
 
@@ -141,7 +142,12 @@ func (s *Scanner) addToken(tokenType ast.TokenType) {
 
 func (s *Scanner) addTokenWithLiteral(tokenType ast.TokenType, literal interface{}) {
 	text := s.source[s.start:s.current]
-	token := ast.Token{TokenType: tokenType, Lexeme: text, Literal: literal, Line: s.line}
+	token := ast.Token{
+		TokenType: tokenType,
+		Lexeme:    text,
+		Literal:   literal,
+		Line:      s.line,
+		Start:     s.start}
 	s.tokens = append(s.tokens, token)
 }
 

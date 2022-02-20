@@ -14,8 +14,6 @@ var (
 	hadRuntimeError bool
 )
 
-var interpreter = NewInterpreter(InterpreterConfig{StdOut: os.Stdout})
-
 func main() {
 	var filePath string
 
@@ -58,17 +56,37 @@ func runFile(path string) {
 	}
 }
 
-func run(source string) {
-	scanner := Scanner{source: source}
+func newRunner(config InterpreterConfig) runner {
+	return runner{interpreter: NewInterpreter(config)}
+}
+
+type runner struct {
+	interpreter *Interpreter
+}
+
+func (r runner) run(source string) {
+	scanner := NewScanner(source)
 	tokens := scanner.ScanTokens()
 
-	parser := Parser{tokens: tokens}
+	parser := NewParser(tokens)
 	statements := parser.Parse()
 
 	if hadError {
 		return
 	}
 
-	result := interpreter.Interpret(statements)
+	resolver := NewResolver(r.interpreter)
+	resolver.resolveStmts(statements)
+
+	if hadError {
+		return
+	}
+
+	result := r.interpreter.Interpret(statements)
 	fmt.Println(result)
+}
+
+func run(source string) {
+	r := newRunner(InterpreterConfig{StdOut: os.Stdout})
+	r.run(source)
 }

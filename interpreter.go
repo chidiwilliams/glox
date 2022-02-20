@@ -17,6 +17,8 @@ type Interpreter struct {
 	globals *environment
 	// standard output
 	stdOut io.Writer
+	// pointer, else compares same pointer
+	locals map[ast.Expr]int
 }
 
 // InterpreterConfig holds the configuration for an interpreter
@@ -30,7 +32,12 @@ func NewInterpreter(config InterpreterConfig) *Interpreter {
 	globals := &environment{}
 	globals.define("clock", clock{})
 
-	return &Interpreter{globals: globals, environment: globals, stdOut: config.StdOut}
+	return &Interpreter{
+		globals:     globals,
+		environment: globals,
+		stdOut:      config.StdOut,
+		locals:      make(map[ast.Expr]int),
+	}
 }
 
 // Interpret interprets a list of statements within the interpreter's environment
@@ -76,6 +83,11 @@ func (in *Interpreter) VisitCallExpr(expr ast.CallExpr) interface{} {
 
 func (in *Interpreter) execute(stmt ast.Stmt) interface{} {
 	return stmt.Accept(in)
+}
+
+// resolve sets the depth of a local variable access
+func (in *Interpreter) resolve(expr ast.Expr, depth int) {
+	in.locals[expr] = depth
 }
 
 func (in *Interpreter) evaluate(expr ast.Expr) interface{} {
@@ -195,13 +207,30 @@ func (in *Interpreter) VisitReturnStmt(stmt ast.ReturnStmt) interface{} {
 }
 
 func (in *Interpreter) VisitAssignExpr(expr ast.AssignExpr) interface{} {
-	val := in.evaluate(expr.Value)
-	in.environment.assign(expr.Name, val)
-	return val
+	value := in.evaluate(expr.Value)
+
+	distance, ok := in.locals[expr]
+	if ok {
+		in.environment.assignAt(distance, expr.Name, value)
+	} else {
+		in.globals.assign(expr.Name, value)
+	}
+
+	return value
 }
 
 func (in *Interpreter) VisitVariableExpr(expr ast.VariableExpr) interface{} {
-	return in.environment.get(expr.Name)
+	return in.lookupVariable(expr.Name, expr)
+}
+
+// lookupVariable returns the value of a variable
+func (in *Interpreter) lookupVariable(name ast.Token, expr ast.VariableExpr) interface{} {
+	// If the variable is a local variable, find it in the resolved enclosing scope
+	if distance, ok := in.locals[expr]; ok {
+		return in.environment.getAt(distance, name.Lexeme)
+	}
+
+	return in.globals.get(name)
 }
 
 func (in *Interpreter) VisitBinaryExpr(expr ast.BinaryExpr) interface{} {
@@ -260,6 +289,7 @@ func (in *Interpreter) VisitFunctionExpr(expr ast.FunctionExpr) interface{} {
 	if expr.Name != nil {
 		fn.closure.define(expr.Name.Lexeme, fn)
 	}
+
 	return fn
 }
 
@@ -293,7 +323,9 @@ func (in *Interpreter) VisitTernaryExpr(expr ast.TernaryExpr) interface{} {
 
 func (in *Interpreter) executeBlock(statements []ast.Stmt, env *environment) {
 	previous := in.environment
-	defer func() { in.environment = previous }()
+	defer func() {
+		in.environment = previous
+	}()
 
 	in.environment = env
 	for _, statement := range statements {
