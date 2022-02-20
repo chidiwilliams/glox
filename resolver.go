@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 
 	"glox/ast"
@@ -13,25 +14,38 @@ const (
 	functionTypeFunction
 )
 
+type scopeVar struct {
+	token   ast.Token
+	defined bool
+	used    bool
+}
+
 // scope describes all the local variables
 // declared and defined in the current scope
-type scope map[string]bool
+type scope map[string]*scopeVar
 
 // declare a variable with the given name in this scope
-func (s scope) declare(name string) {
-	s[name] = false
+func (s scope) declare(name string, token ast.Token) {
+	s[name] = &scopeVar{token: token}
 }
 
 // define a variable with the given name in this scope
 func (s scope) define(name string) {
-	s[name] = true
+	s[name].defined = true
 }
 
 // has returns whether a variable with the given
 // name is declared and defined in this scope
 func (s scope) has(name string) (declared, defined bool) {
 	v, ok := s[name]
-	return v, ok
+	if !ok {
+		return false, false
+	}
+	return true, v.defined
+}
+
+func (s scope) use(name string) {
+	s[name].used = true
 }
 
 // Resolver resolves local variables in a program. It reports
@@ -91,11 +105,18 @@ func (r *Resolver) resolveFunction(function ast.FunctionStmt, fnType functionTyp
 
 // beginScope pushes a new scope to the stack
 func (r *Resolver) beginScope() {
-	r.scopes = append(r.scopes, make(map[string]bool))
+	r.scopes = append(r.scopes, make(map[string]*scopeVar))
 }
 
-// endScope pops the current scope
+// endScope pops the current scope. Before removing the scope,
+// it reports an error if any local variable in the scope was unused.
 func (r *Resolver) endScope() {
+	for name, v := range r.scopes[len(r.scopes)-1] {
+		if !v.used {
+			reportTokenErr(r.stdErr, v.token, fmt.Sprintf("Variable '%s' declared but not used.", name))
+		}
+	}
+
 	r.scopes = r.scopes[:len(r.scopes)-1]
 }
 
@@ -266,7 +287,7 @@ func (r *Resolver) declare(name ast.Token) {
 		reportTokenErr(r.stdErr, name, "Already a variable with this name in this scope")
 	}
 
-	sc.declare(name.Lexeme)
+	sc.declare(name.Lexeme, name)
 }
 
 // define a variable name within the current scope
@@ -285,9 +306,11 @@ func (r *Resolver) define(name ast.Token) {
 // where the variable is accessed and the scope where the variable was defined.
 func (r *Resolver) resolveLocal(expr ast.Expr, name ast.Token) {
 	for i := len(r.scopes) - 1; i >= 0; i-- {
-		if _, defined := r.scopes[i].has(name.Lexeme); defined {
+		s := r.scopes[i]
+		if _, defined := s.has(name.Lexeme); defined {
 			depth := len(r.scopes) - 1 - i
 			r.interpreter.resolve(expr, depth)
+			s.use(name.Lexeme)
 			return
 		}
 	}

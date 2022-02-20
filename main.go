@@ -58,6 +58,7 @@ func runFile(path string) {
 }
 
 func newRunner(stdOut io.Writer, stdErr io.Writer) runner {
+	hadError = false // FIXME: make this a field in the runner?
 	return runner{interpreter: NewInterpreter(stdOut, stdErr), stdErr: stdErr}
 }
 

@@ -154,11 +154,15 @@ sayHello("only first");`, "", "Expected 2 arguments but got 1.\n[line 3]"},
 		showA();
 		var a = "block";
 		showA();
+		a; // mutes error about the local variable not being used
 }`, "global\nglobal\n", ""},
 		{"re-declaring variables in same scope", `{
+				var a = "global";
+				var a = "global2";
+		}`, "", "[line 2] Error at 'a': Already a variable with this name in this scope\n[line 2] Error at 'a': Variable 'a' declared but not used.\n"},
+		{"unused local variable", `{
 		var a = "global";
-		var a = "global2";
-}`, "", "[line 2] Error at 'a': Already a variable with this name in this scope\n"},
+}`, "", "[line 1] Error at 'a': Variable 'a' declared but not used.\n"},
 	}
 
 	for _, tt := range tests {
