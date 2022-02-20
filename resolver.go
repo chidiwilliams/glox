@@ -12,9 +12,22 @@ const (
 // scope is a map of all the local variables defined
 // in the current scope. A key corresponding to the
 // variable name exists in the map when the variable
-// is defined. The value of the key (true/false)
+// is declared. The value of the key (true/false)
 // says whether the variable has been defined or not.
 type scope map[string]bool
+
+func (s scope) declare(name string) {
+	s[name] = false
+}
+
+func (s scope) define(name string) {
+	s[name] = true
+}
+
+func (s scope) get(name string) (declared, defined bool) {
+	v, ok := s[name]
+	return v, ok
+}
 
 // Resolver resolves local variables in a program. It reports
 // to the interpreter the variable to use each time a local
@@ -157,7 +170,7 @@ func (r *Resolver) VisitUnaryExpr(expr ast.UnaryExpr) interface{} {
 
 func (r *Resolver) VisitVariableExpr(expr ast.VariableExpr) interface{} {
 	if len(r.scopes) > 0 {
-		if v, ok := r.scopes[len(r.scopes)-1][expr.Name.Lexeme]; ok && !v { // if the variable name is declared but not defined, report error
+		if defined, declared := r.scopes[len(r.scopes)-1].get(expr.Name.Lexeme); declared && !defined { // if the variable name is declared but not defined, report error
 			reportTokenErr(expr.Name, "Can't read local variable in its own initializer.")
 		}
 	}
@@ -242,12 +255,12 @@ func (r *Resolver) declare(name ast.Token) {
 		return
 	}
 
-	scope := r.scopes[len(r.scopes)-1]
-	if _, ok := scope[name.Lexeme]; ok {
+	sc := r.scopes[len(r.scopes)-1]
+	if _, defined := sc.get(name.Lexeme); defined {
 		reportTokenErr(name, "Already a variable with this name in this scope")
 	}
 
-	scope[name.Lexeme] = false
+	sc.declare(name.Lexeme)
 }
 
 // define a variable name within the current scope
@@ -257,7 +270,7 @@ func (r *Resolver) define(name ast.Token) {
 		return
 	}
 
-	r.scopes[len(r.scopes)-1][name.Lexeme] = true
+	r.scopes[len(r.scopes)-1].define(name.Lexeme)
 }
 
 // resolveLocal resolves a local variable or assignment expression. It
@@ -266,7 +279,7 @@ func (r *Resolver) define(name ast.Token) {
 // where the variable is accessed and the scope where the variable was defined.
 func (r *Resolver) resolveLocal(expr ast.Expr, name ast.Token) {
 	for i := len(r.scopes) - 1; i >= 0; i-- {
-		if _, ok := r.scopes[i][name.Lexeme]; ok {
+		if _, defined := r.scopes[i].get(name.Lexeme); defined {
 			depth := len(r.scopes) - 1 - i
 			r.interpreter.resolve(expr, depth)
 			return
