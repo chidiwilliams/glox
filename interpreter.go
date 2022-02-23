@@ -92,8 +92,7 @@ func (in *Interpreter) evaluate(expr ast.Expr) interface{} {
 }
 
 func (in *Interpreter) VisitBlockStmt(stmt ast.BlockStmt) interface{} {
-	// TODO: Why do I need to pass in a pointer here
-	in.executeBlock(stmt.Statements, &environment{enclosing: in.environment})
+	in.executeBlock(stmt.Statements, environment{enclosing: in.environment})
 	return nil
 }
 
@@ -318,13 +317,13 @@ func (in *Interpreter) VisitTernaryExpr(expr ast.TernaryExpr) interface{} {
 	return in.evaluate(expr.Right)
 }
 
-func (in *Interpreter) executeBlock(statements []ast.Stmt, env *environment) {
+func (in *Interpreter) executeBlock(statements []ast.Stmt, env environment) {
 	previous := in.environment
 	defer func() {
 		in.environment = previous
 	}()
 
-	in.environment = env
+	in.environment = &env
 	for _, statement := range statements {
 		in.execute(statement)
 	}

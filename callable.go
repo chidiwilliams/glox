@@ -31,7 +31,7 @@ func (f function) call(interpreter *Interpreter, args []interface{}) (returnVal 
 	for i, v := range f.declaration.Params {
 		env.define(v.Lexeme, args[i])
 	}
-	interpreter.executeBlock(f.declaration.Body, &env)
+	interpreter.executeBlock(f.declaration.Body, env)
 	return nil
 }
 
@@ -63,6 +63,6 @@ func (f functionExpr) call(in *Interpreter, args []interface{}) (returnVal inter
 	for i, v := range f.declaration.Params {
 		env.define(v.Lexeme, args[i])
 	}
-	in.executeBlock(f.declaration.Body, &env)
+	in.executeBlock(f.declaration.Body, env)
 	return nil
 }
