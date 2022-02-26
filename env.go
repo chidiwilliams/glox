@@ -18,27 +18,25 @@ func (e *environment) define(name string, value interface{}) {
 	e.values[name] = value
 }
 
-func (e environment) get(name ast.Token) interface{} {
-	if v, ok := e.values[name.Lexeme]; ok {
-		return v
+func (e *environment) get(name ast.Token) (interface{}, error) {
+	if val, ok := e.values[name.Lexeme]; ok {
+		return val, nil
 	}
 	if e.enclosing != nil {
 		return e.enclosing.get(name)
 	}
-
-	panic(runtimeError{name, fmt.Sprintf("Undefined variable '%s'", name.Lexeme)})
+	return nil, runtimeError{name, fmt.Sprintf("Undefined variable '%s'", name.Lexeme)}
 }
 
-func (e *environment) assign(name ast.Token, value interface{}) {
+func (e *environment) assign(name ast.Token, value interface{}) error {
 	if _, ok := e.values[name.Lexeme]; ok {
 		e.define(name.Lexeme, value)
-		return
+		return nil
 	}
 	if e.enclosing != nil {
-		e.enclosing.assign(name, value)
-		return
+		return e.enclosing.assign(name, value)
 	}
-	panic(runtimeError{name, fmt.Sprintf("Undefined variable '%s'", name.Lexeme)})
+	return runtimeError{name, fmt.Sprintf("Undefined variable '%s'", name.Lexeme)}
 }
 
 func (e *environment) getAt(distance int, name string) interface{} {
