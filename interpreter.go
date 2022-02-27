@@ -14,7 +14,7 @@ type Interpreter struct {
 	// current execution environment
 	environment *environment
 	// global variables
-	globals *environment
+	globals environment
 	// standard output
 	stdOut io.Writer
 	// standard error
@@ -25,12 +25,12 @@ type Interpreter struct {
 
 // NewInterpreter sets up a new interpreter with its environment and config
 func NewInterpreter(stdOut io.Writer, stdErr io.Writer) *Interpreter {
-	globals := &environment{}
+	globals := environment{}
 	globals.define("clock", clock{})
 
 	return &Interpreter{
 		globals:     globals,
-		environment: globals,
+		environment: &globals,
 		stdOut:      stdOut,
 		stdErr:      stdErr,
 		locals:      make(map[ast.Expr]int),
@@ -57,27 +57,6 @@ func (in *Interpreter) Interpret(stmts []ast.Stmt) interface{} {
 	return result
 }
 
-func (in *Interpreter) VisitCallExpr(expr ast.CallExpr) interface{} {
-	callee := in.evaluate(expr.Callee)
-
-	args := make([]interface{}, 0)
-	for _, arg := range expr.Arguments {
-		args = append(args, in.evaluate(arg))
-	}
-
-	fn, ok := (callee).(callable)
-	if !ok {
-		panic(runtimeError{token: expr.Paren, msg: "Can only call functions and classes."})
-	}
-
-	if len(args) != fn.arity() {
-		panic(runtimeError{token: expr.Paren,
-			msg: fmt.Sprintf("Expected %d arguments but got %d.", fn.arity(), len(args))})
-	}
-
-	return fn.call(in, args)
-}
-
 func (in *Interpreter) execute(stmt ast.Stmt) interface{} {
 	return stmt.Accept(in)
 }
@@ -93,6 +72,27 @@ func (in *Interpreter) evaluate(expr ast.Expr) interface{} {
 
 func (in *Interpreter) VisitBlockStmt(stmt ast.BlockStmt) interface{} {
 	in.executeBlock(stmt.Statements, environment{enclosing: in.environment})
+	return nil
+}
+
+func (in *Interpreter) VisitClassStmt(stmt ast.ClassStmt) interface{} {
+	in.environment.define(stmt.Name.Lexeme, nil)
+
+	methods := make(map[string]function)
+	for _, method := range stmt.Methods {
+		fn := function{
+			declaration:   method,
+			closure:       in.environment,
+			isInitializer: method.Name.Lexeme == "init",
+		}
+		methods[method.Name.Lexeme] = fn
+	}
+
+	class := Class{name: stmt.Name.Lexeme, methods: methods}
+	err := in.environment.assign(stmt.Name, class)
+	if err != nil {
+		panic(err)
+	}
 	return nil
 }
 
@@ -217,6 +217,39 @@ func (in *Interpreter) VisitAssignExpr(expr ast.AssignExpr) interface{} {
 	return value
 }
 
+func (in *Interpreter) VisitCallExpr(expr ast.CallExpr) interface{} {
+	callee := in.evaluate(expr.Callee)
+
+	args := make([]interface{}, 0)
+	for _, arg := range expr.Arguments {
+		args = append(args, in.evaluate(arg))
+	}
+
+	fn, ok := (callee).(callable)
+	if !ok {
+		panic(runtimeError{token: expr.Paren, msg: "Can only call functions and classes."})
+	}
+
+	if len(args) != fn.arity() {
+		panic(runtimeError{token: expr.Paren,
+			msg: fmt.Sprintf("Expected %d arguments but got %d.", fn.arity(), len(args))})
+	}
+
+	return fn.call(in, args)
+}
+
+func (in *Interpreter) VisitGetExpr(expr ast.GetExpr) interface{} {
+	object := in.evaluate(expr.Object)
+	if instance, ok := object.(Instance); ok {
+		val, err := instance.Get(in, expr.Name)
+		if err != nil {
+			panic(err)
+		}
+		return val
+	}
+	panic(runtimeError{token: expr.Name, msg: "Only instances have properties."})
+}
+
 func (in *Interpreter) VisitVariableExpr(expr ast.VariableExpr) interface{} {
 	val, err := in.lookupVariable(expr.Name, expr)
 	if err != nil {
@@ -226,12 +259,12 @@ func (in *Interpreter) VisitVariableExpr(expr ast.VariableExpr) interface{} {
 }
 
 // lookupVariable returns the value of a variable
-func (in *Interpreter) lookupVariable(name ast.Token, expr ast.VariableExpr) (interface{}, error) {
+func (in *Interpreter) lookupVariable(name ast.Token, expr ast.Expr) (interface{}, error) {
 	// If the variable is a local variable, find it in the resolved enclosing scope
 	if distance, ok := in.locals[expr]; ok {
 		return in.environment.getAt(distance, name.Lexeme), nil
 	}
-	return in.globals.get(name)
+	return in.globals.Get(nil, name)
 }
 
 func (in *Interpreter) VisitBinaryExpr(expr ast.BinaryExpr) interface{} {
@@ -314,6 +347,27 @@ func (in *Interpreter) VisitGroupingExpr(expr ast.GroupingExpr) interface{} {
 
 func (in *Interpreter) VisitLiteralExpr(expr ast.LiteralExpr) interface{} {
 	return expr.Value
+}
+
+func (in *Interpreter) VisitSetExpr(expr ast.SetExpr) interface{} {
+	object := in.evaluate(expr.Object)
+
+	inst, ok := object.(*instance)
+	if !ok {
+		panic(runtimeError{token: expr.Name, msg: "Only instances have fields."})
+	}
+
+	value := in.evaluate(expr.Value)
+	inst.set(expr.Name, value)
+	return nil
+}
+
+func (in *Interpreter) VisitThisExpr(expr ast.ThisExpr) interface{} {
+	val, err := in.lookupVariable(expr.Keyword, expr)
+	if err != nil {
+		panic(err)
+	}
+	return val
 }
 
 func (in *Interpreter) VisitUnaryExpr(expr ast.UnaryExpr) interface{} {

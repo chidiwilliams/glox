@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"strconv"
 	"testing"
 )
 
@@ -163,6 +164,57 @@ sayHello("only first");`, "", "Expected 2 arguments but got 1.\n[line 3]"},
 		{"unused local variable", `{
 		var a = "global";
 }`, "", "[line 1] Error at 'a': Variable 'a' declared but not used.\n"},
+
+		// Classes
+		{"class method", `class Bacon {
+	eat() {
+		print "Crunch crunch";
+	}
+}
+Bacon().eat();
+`, "Crunch crunch\n", ""},
+		{"this", `class Cake {
+	taste() {
+		var adjective = "delicious";
+		print "The " + this.flavor + " cake is " + adjective + "!";
+	}
+}
+
+var cake = Cake();
+cake.flavor = "German chocolate";
+cake.taste();
+`, "The German chocolate cake is delicious!\n", ""},
+		{"init class", `class Circle {
+	init(radius) {
+		this.radius = radius;
+	}
+
+	area() {
+		return 3.141592653 * this.radius * this.radius; 
+	}
+}
+
+var circle = Circle(7);
+print circle.area();`, "153.938039997\n", ""},
+		{"class with static methods", `class Math {
+	add(x, y) {
+		return x + y;
+	}
+}
+
+print Math.add(1, 2);`, "3\n", ""},
+		{"getter", `class Circle {
+	init(radius) {
+		this.radius = radius;
+	}
+
+	area {
+		return 3.141592653 * this.radius * this.radius; 
+	}
+}
+
+var circle = Circle(7);
+print circle.area;`, "153.938039997\n", ""},
 	}
 
 	for _, tt := range tests {
@@ -173,11 +225,11 @@ sayHello("only first");`, "", "Expected 2 arguments but got 1.\n[line 3]"},
 			r.run(tt.source)
 
 			if stdOut.String() != tt.stdOut {
-				t.Fatalf("stdOut: got \"%s\", expected \"%s\"", stdOut, tt.stdOut)
+				t.Errorf("stdOut: got %s, expected %s", strconv.Quote(stdOut.String()), strconv.Quote(tt.stdOut))
 			}
 
 			if stdErr.String() != tt.stdErr {
-				t.Fatalf("stdErr: got \"%s\", expected \"%s\"", stdErr, tt.stdErr)
+				t.Errorf("stdErr: got %s, expected %s", strconv.Quote(stdErr.String()), strconv.Quote(tt.stdErr))
 			}
 		})
 	}

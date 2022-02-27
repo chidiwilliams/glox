@@ -12,6 +12,15 @@ func (b BlockStmt) Accept(visitor StmtVisitor) interface{} {
 	return visitor.VisitBlockStmt(b)
 }
 
+type ClassStmt struct {
+	Name    Token
+	Methods []FunctionStmt
+}
+
+func (b ClassStmt) Accept(visitor StmtVisitor) interface{} {
+	return visitor.VisitClassStmt(b)
+}
+
 type ExpressionStmt struct {
 	Expr Expr
 }
@@ -91,6 +100,7 @@ func (b VarStmt) Accept(visitor StmtVisitor) interface{} {
 
 type StmtVisitor interface {
 	VisitBlockStmt(stmt BlockStmt) interface{}
+	VisitClassStmt(stmt ClassStmt) interface{}
 	VisitExpressionStmt(stmt ExpressionStmt) interface{}
 	VisitFunctionStmt(stmt FunctionStmt) interface{}
 	VisitIfStmt(stmt IfStmt) interface{}

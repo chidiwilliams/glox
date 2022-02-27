@@ -18,12 +18,12 @@ func (e *environment) define(name string, value interface{}) {
 	e.values[name] = value
 }
 
-func (e *environment) get(name ast.Token) (interface{}, error) {
+func (e *environment) Get(in *Interpreter, name ast.Token) (interface{}, error) {
 	if val, ok := e.values[name.Lexeme]; ok {
 		return val, nil
 	}
 	if e.enclosing != nil {
-		return e.enclosing.get(name)
+		return e.enclosing.Get(nil, name)
 	}
 	return nil, runtimeError{name, fmt.Sprintf("Undefined variable '%s'", name.Lexeme)}
 }

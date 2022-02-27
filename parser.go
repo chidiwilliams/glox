@@ -29,7 +29,8 @@ func NewParser(tokens []ast.Token) *Parser {
 Parser grammar:
 
 	program      => declaration* EOF
-	declaration  => funcDecl | varDecl | statement
+	declaration  => classDecl | funcDecl | varDecl | statement
+	classDecl    => "class" IDENTIFIER  "{" function* "}"
 	funDecl      => "fun" function
 	function     => IDENTIFIER "(" parameters? ")" block
 	parameters   => IDENTIFIER ( "," IDENTIFIER )*
@@ -45,7 +46,7 @@ Parser grammar:
 	block        => "{" declaration* "}" ;
 	expression   => series
 	series       => assignment ( "," assignment )*
-	assignment   => IDENTIFIER "=" assignment | ternary
+	assignment   => ( call "." )? IDENTIFIER "=" assignment | ternary
 	ternary      => logic_or ( "?" ternary ":" ternary )*
 	logic_or     => logic_and ( "or" logic_and )*
 	logic_and    => equality ( "and" equality )*
@@ -54,7 +55,7 @@ Parser grammar:
 	term         => factor ( ( "+" | "-" ) factor )*
 	factor       => unary ( ( "/" | "*" ) unary )*
 	unary        => ( "!" | "-" ) unary | call
-	call         => primary ( "(" arguments? ")" )*
+	call         => primary ( "(" arguments? ")" | "." IDENTIFIER )*
 	arguments    => expression ( "," expression )*
 	primary      => NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" | IDENTIFIER | functionExpr
 	functionExpr => "fun" IDENTIFIER? "(" parameters? ")" block
@@ -89,6 +90,9 @@ func (p *Parser) declaration() ast.Stmt {
 		}
 	}()
 
+	if p.match(ast.TokenClass) {
+		return p.classDeclaration()
+	}
 	if p.match(ast.TokenFun) {
 		return p.function("function")
 	}
@@ -96,6 +100,19 @@ func (p *Parser) declaration() ast.Stmt {
 		return p.varDeclaration()
 	}
 	return p.statement()
+}
+
+func (p *Parser) classDeclaration() ast.Stmt {
+	name := p.consume(ast.TokenIdentifier, "Expect class name.")
+	p.consume(ast.TokenLeftBrace, "Expect '{' before class body.")
+
+	methods := make([]ast.FunctionStmt, 0)
+	for !p.check(ast.TokenRightBrace) && !p.isAtEnd() {
+		methods = append(methods, p.function("method"))
+	}
+
+	p.consume(ast.TokenRightBrace, "Expect '}' after class body.")
+	return ast.ClassStmt{Name: name, Methods: methods}
 }
 
 func (p *Parser) varDeclaration() ast.Stmt {
@@ -247,24 +264,30 @@ func (p *Parser) expressionStatement() ast.Stmt {
 	return ast.ExpressionStmt{Expr: expr}
 }
 
-func (p *Parser) function(kind string) ast.Stmt {
+func (p *Parser) function(kind string) ast.FunctionStmt {
 	name := p.consume(ast.TokenIdentifier, "Expect "+kind+" name.")
-	p.consume(ast.TokenLeftParen, "Expect '(' after "+kind+" name.")
 
-	parameters := make([]ast.Token, 0)
-	if !p.check(ast.TokenRightParen) {
-		for {
-			if len(parameters) >= 255 {
-				p.error(p.peek(), "Can't have more than 255 parameters.")
-			}
-			parameters = append(parameters, p.consume(ast.TokenIdentifier, "Expect parameter name."))
-			if !p.match(ast.TokenComma) {
-				break
+	var parameters []ast.Token
+
+	if kind != "method" || p.check(ast.TokenLeftParen) {
+		parameters = make([]ast.Token, 0)
+		p.consume(ast.TokenLeftParen, "Expect '(' after "+kind+" name.")
+
+		if !p.check(ast.TokenRightParen) {
+			for {
+				if len(parameters) >= 255 {
+					p.error(p.peek(), "Can't have more than 255 parameters.")
+				}
+				parameters = append(parameters, p.consume(ast.TokenIdentifier, "Expect parameter name."))
+				if !p.match(ast.TokenComma) {
+					break
+				}
 			}
 		}
+
+		p.consume(ast.TokenRightParen, "Expect ')' after parameters")
 	}
 
-	p.consume(ast.TokenRightParen, "Expect ')' after parameters")
 	p.consume(ast.TokenLeftBrace, "Expect '{' before "+kind+" body.")
 
 	body := p.block()
@@ -290,9 +313,15 @@ func (p *Parser) assignment() ast.Expr {
 	expr := p.ternary()
 	if p.match(ast.TokenEqual) {
 		equals := p.previous()
+		value := p.assignment()
 		if varExpr, ok := expr.(ast.VariableExpr); ok {
-			value := p.assignment()
 			return ast.AssignExpr{Name: varExpr.Name, Value: value}
+		} else if getExpr, ok := expr.(ast.GetExpr); ok {
+			return ast.SetExpr{
+				Object: getExpr.Object,
+				Name:   getExpr.Name,
+				Value:  value,
+			}
 		}
 		_ = p.error(equals, "Invalid assignment target.")
 	}
@@ -388,19 +417,32 @@ func (p *Parser) unary() ast.Expr {
 		return ast.UnaryExpr{Operator: operator, Right: right}
 	}
 
-	return p.call()
+	expr, err := p.call()
+	if err != nil {
+		panic(err)
+	}
+
+	return expr
 }
 
-func (p *Parser) call() ast.Expr {
-	expr := p.primary()
+func (p *Parser) call() (ast.Expr, error) {
+	expr, err := p.primary()
+	if err != nil {
+		return nil, err
+	}
+
 	for {
 		if p.match(ast.TokenLeftParen) {
 			expr = p.finishCall(expr)
+		} else if p.match(ast.TokenDot) {
+			name := p.consume(ast.TokenIdentifier, "Expect property name after '.'.")
+			expr = ast.GetExpr{Object: expr, Name: name}
 		} else {
 			break
 		}
 	}
-	return expr
+
+	return expr, nil
 }
 
 func (p *Parser) finishCall(callee ast.Expr) ast.Expr {
@@ -420,27 +462,29 @@ func (p *Parser) finishCall(callee ast.Expr) ast.Expr {
 	return ast.CallExpr{Callee: callee, Paren: paren, Arguments: args}
 }
 
-func (p *Parser) primary() ast.Expr {
+func (p *Parser) primary() (ast.Expr, error) {
 	switch {
 	case p.match(ast.TokenFalse):
-		return ast.LiteralExpr{Value: false}
+		return ast.LiteralExpr{Value: false}, nil
 	case p.match(ast.TokenTrue):
-		return ast.LiteralExpr{Value: true}
+		return ast.LiteralExpr{Value: true}, nil
 	case p.match(ast.TokenNil):
-		return ast.LiteralExpr{}
+		return ast.LiteralExpr{}, nil
 	case p.match(ast.TokenNumber, ast.TokenString):
-		return ast.LiteralExpr{Value: p.previous().Literal}
+		return ast.LiteralExpr{Value: p.previous().Literal}, nil
 	case p.match(ast.TokenLeftParen):
 		expr := p.expression()
 		p.consume(ast.TokenRightParen, "Expect ')' after expression.")
-		return ast.GroupingExpr{Expression: expr}
+		return ast.GroupingExpr{Expression: expr}, nil
 	case p.match(ast.TokenIdentifier):
-		return ast.VariableExpr{Name: p.previous()}
+		return ast.VariableExpr{Name: p.previous()}, nil
 	case p.match(ast.TokenFun):
-		return p.functionExpression()
+		return p.functionExpression(), nil
+	case p.match(ast.TokenThis):
+		return ast.ThisExpr{Keyword: p.previous()}, nil
 	}
 
-	panic(p.error(p.peek(), "Expect expression."))
+	return nil, p.error(p.peek(), "Expect expression.")
 }
 
 // functionExpression parses a function expression.

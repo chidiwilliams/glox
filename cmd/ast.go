@@ -14,9 +14,12 @@ func main() {
 		"Binary   : Left Expr, Operator Token, Right Expr",
 		"Call     : Callee Expr, Paren Token, Arguments []Expr",
 		"Function : Name *Token, Params []Token, Body []Stmt",
+		"Get      : Object Expr, Name Token",
 		"Grouping : Expression Expr",
 		"Literal  : Value interface{}",
 		"Logical  : Left Expr, Operator Token, Right Expr",
+		"Set      : Object Expr, Name Token, Value Expr",
+		"This     : Keyword Token",
 		"Ternary  : Cond Expr, Left Expr, Right Expr",
 		"Unary    : Operator Token, Right Expr",
 		"Variable : Name Token",
@@ -24,6 +27,7 @@ func main() {
 
 	writeAst("Stmt", []string{
 		"Block      : Statements []Stmt",
+		"Class      : Name Token, Methods []FunctionStmt",
 		"Expression : Expr Expr",
 		"Function   : Name Token, Params []Token, Body []Stmt",
 		"If         : Condition Expr, ThenBranch Stmt, ElseBranch Stmt",

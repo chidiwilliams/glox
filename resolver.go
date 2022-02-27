@@ -12,6 +12,15 @@ type functionType int
 const (
 	functionTypeNone functionType = iota
 	functionTypeFunction
+	functionTypeMethod
+	functionTypeInitializer
+)
+
+type classType int
+
+const (
+	classTypeNone classType = iota
+	classTypeClass
 )
 
 type scopeVar struct {
@@ -44,8 +53,27 @@ func (s scope) has(name string) (declared, defined bool) {
 	return true, v.defined
 }
 
+// use sets a variable as used in this scope
 func (s scope) use(name string) {
 	s[name].used = true
+}
+
+func (s scope) set(name string) {
+	s[name] = &scopeVar{defined: true, used: true}
+}
+
+type scopes []scope
+
+func (s *scopes) peek() scope {
+	return (*s)[len(*s)-1]
+}
+
+func (s *scopes) push(scope scope) {
+	*s = append(*s, scope)
+}
+
+func (s *scopes) pop() {
+	*s = (*s)[:len(*s)-1]
 }
 
 // Resolver resolves local variables in a program. It reports
@@ -55,13 +83,16 @@ type Resolver struct {
 	// the program Interpreter
 	interpreter *Interpreter
 	// scopes is a stack of scope-s
-	scopes []scope
+	scopes scopes
 	// currentFunction is the functionType of the
 	// current enclosing function. The Resolver uses
 	// the field to report an error when a return
 	// statement appears outside a function
 	currentFunction functionType
-	stdErr          io.Writer
+	// the classType of the current enclosing class, used
+	// to report an error when "this" appears outside a class
+	currentClass classType
+	stdErr       io.Writer
 }
 
 // NewResolver returns a new Resolver
@@ -105,19 +136,19 @@ func (r *Resolver) resolveFunction(function ast.FunctionStmt, fnType functionTyp
 
 // beginScope pushes a new scope to the stack
 func (r *Resolver) beginScope() {
-	r.scopes = append(r.scopes, make(map[string]*scopeVar))
+	r.scopes.push(make(scope))
 }
 
 // endScope pops the current scope. Before removing the scope,
 // it reports an error if any local variable in the scope was unused.
 func (r *Resolver) endScope() {
-	for name, v := range r.scopes[len(r.scopes)-1] {
+	for name, v := range r.scopes.peek() {
 		if !v.used {
 			reportTokenErr(r.stdErr, v.token, fmt.Sprintf("Variable '%s' declared but not used.", name))
 		}
 	}
 
-	r.scopes = r.scopes[:len(r.scopes)-1]
+	r.scopes.pop()
 }
 
 func (r *Resolver) VisitAssignExpr(expr ast.AssignExpr) interface{} {
@@ -168,6 +199,11 @@ func (r *Resolver) VisitFunctionExpr(expr ast.FunctionExpr) interface{} {
 	return nil
 }
 
+func (r *Resolver) VisitGetExpr(expr ast.GetExpr) interface{} {
+	r.resolveExpr(expr.Object)
+	return nil
+}
+
 func (r *Resolver) VisitGroupingExpr(expr ast.GroupingExpr) interface{} {
 	r.resolveExpr(expr.Expression)
 	return nil
@@ -180,6 +216,22 @@ func (r *Resolver) VisitLiteralExpr(_ ast.LiteralExpr) interface{} {
 func (r *Resolver) VisitLogicalExpr(expr ast.LogicalExpr) interface{} {
 	r.resolveExpr(expr.Left)
 	r.resolveExpr(expr.Right)
+	return nil
+}
+
+func (r *Resolver) VisitSetExpr(expr ast.SetExpr) interface{} {
+	r.resolveExpr(expr.Value)
+	r.resolveExpr(expr.Object)
+	return nil
+}
+
+func (r *Resolver) VisitThisExpr(expr ast.ThisExpr) interface{} {
+	if r.currentClass == classTypeNone {
+		reportTokenErr(r.stdErr, expr.Keyword, "Can't use 'this' outside of a class.")
+		return nil
+	}
+
+	r.resolveLocal(expr, expr.Keyword)
 	return nil
 }
 
@@ -197,7 +249,7 @@ func (r *Resolver) VisitUnaryExpr(expr ast.UnaryExpr) interface{} {
 
 func (r *Resolver) VisitVariableExpr(expr ast.VariableExpr) interface{} {
 	if len(r.scopes) > 0 {
-		if declared, defined := r.scopes[len(r.scopes)-1].has(expr.Name.Lexeme); declared && !defined { // if the variable name is declared but not defined, report error
+		if declared, defined := r.scopes.peek().has(expr.Name.Lexeme); declared && !defined { // if the variable name is declared but not defined, report error
 			reportTokenErr(r.stdErr, expr.Name, "Can't read local variable in its own initializer.")
 		}
 	}
@@ -210,6 +262,33 @@ func (r *Resolver) VisitBlockStmt(stmt ast.BlockStmt) interface{} {
 	r.beginScope()
 	r.resolveStmts(stmt.Statements)
 	r.endScope()
+	return nil
+}
+
+func (r *Resolver) VisitClassStmt(stmt ast.ClassStmt) interface{} {
+	enclosingClass := r.currentClass
+	defer func() { r.currentClass = enclosingClass }()
+
+	r.currentClass = classTypeClass
+
+	r.declare(stmt.Name)
+	r.define(stmt.Name)
+
+	r.beginScope()
+
+	r.scopes.peek().set("this")
+
+	for _, method := range stmt.Methods {
+		declaration := functionTypeMethod
+		if method.Name.Lexeme == "init" {
+			declaration = functionTypeInitializer
+		}
+
+		r.resolveFunction(method, declaration)
+	}
+
+	r.endScope()
+
 	return nil
 }
 
@@ -245,8 +324,12 @@ func (r *Resolver) VisitReturnStmt(stmt ast.ReturnStmt) interface{} {
 	}
 
 	if stmt.Value != nil {
+		if r.currentFunction == functionTypeInitializer {
+			reportTokenErr(r.stdErr, stmt.Keyword, "Can't return a value from an initializer;")
+		}
 		r.resolveExpr(stmt.Value)
 	}
+
 	return nil
 }
 
@@ -282,7 +365,7 @@ func (r *Resolver) declare(name ast.Token) {
 		return
 	}
 
-	sc := r.scopes[len(r.scopes)-1]
+	sc := r.scopes.peek()
 	if _, defined := sc.has(name.Lexeme); defined {
 		reportTokenErr(r.stdErr, name, "Already a variable with this name in this scope")
 	}
@@ -297,7 +380,7 @@ func (r *Resolver) define(name ast.Token) {
 		return
 	}
 
-	r.scopes[len(r.scopes)-1].define(name.Lexeme)
+	r.scopes.peek().define(name.Lexeme)
 }
 
 // resolveLocal resolves a local variable or assignment expression. It
