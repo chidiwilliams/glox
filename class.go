@@ -66,9 +66,8 @@ func (i *instance) Get(in *Interpreter, name ast.Token) (interface{}, error) {
 	}
 
 	if method, ok := i.class.findMethod(name.Lexeme); ok {
-		// if the method is a getter, i.e. the method's params are nil,
-		// call the method and return the value
-		if method.declaration.Params == nil {
+		// if the method is a getter, call and return its value
+		if method.isGetter {
 			return method.bind(i).call(in, nil), nil
 		}
 		return method.bind(i), nil

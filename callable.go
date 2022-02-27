@@ -11,6 +11,7 @@ type function struct {
 	declaration   ast.FunctionStmt
 	closure       *environment
 	isInitializer bool
+	isGetter      bool
 }
 
 func (f function) arity() int {

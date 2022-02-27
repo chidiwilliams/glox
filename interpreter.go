@@ -10,7 +10,6 @@ import (
 // Interpreter holds the globals and current execution
 // environment for a program to be executed
 type Interpreter struct {
-	// TODO: Why are these pointers?
 	// current execution environment
 	environment *environment
 	// global variables
@@ -84,6 +83,7 @@ func (in *Interpreter) VisitClassStmt(stmt ast.ClassStmt) interface{} {
 			declaration:   method,
 			closure:       in.environment,
 			isInitializer: method.Name.Lexeme == "init",
+			isGetter:      method.Params == nil, // is this the best way to know it's a getter?
 		}
 		methods[method.Name.Lexeme] = fn
 	}
