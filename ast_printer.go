@@ -8,6 +8,11 @@ import (
 
 type astPrinter struct{}
 
+func (a astPrinter) VisitSuperExpr(expr ast.SuperExpr) interface{} {
+	// TODO implement me
+	panic("implement me")
+}
+
 func (a astPrinter) VisitThisExpr(expr ast.ThisExpr) interface{} {
 	return expr.Keyword.Lexeme
 }

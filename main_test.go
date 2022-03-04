@@ -215,6 +215,35 @@ print Math.add(1, 2);`, "3\n", ""},
 
 var circle = Circle(7);
 print circle.area;`, "153.938039997\n", ""},
+		{"inheritance", `class Doughnut {
+	cook() {
+		print "Fry until golden brown.";
+	}
+}
+
+class BostonCream < Doughnut {}
+
+BostonCream.cook();`, "Fry until golden brown.\n", ""},
+		{"calling super", `class Doughnut {
+	cook() {
+		print "Fry until golden brown.";
+	}
+}
+
+class BostonCream < Doughnut {
+	cook() {
+		super.cook();
+		print "Pipe full of custard and coat with chocolate.";
+	}
+}
+
+BostonCream().cook();`, "Fry until golden brown.\nPipe full of custard and coat with chocolate.\n", ""},
+		{"calling super outside class", `super.hello();`, "", "[line 0] Error at 'super': Can't use 'super' outside of a class.\n"},
+		{"calling super in class with no superclass", `class Doughnut {
+	cook() {
+		super.cook();
+	}
+}`, "", "[line 2] Error at 'super': Can't use 'super' in a class with no superclass.\n"},
 	}
 
 	for _, tt := range tests {

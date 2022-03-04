@@ -13,8 +13,9 @@ func (b BlockStmt) Accept(visitor StmtVisitor) interface{} {
 }
 
 type ClassStmt struct {
-	Name    Token
-	Methods []FunctionStmt
+	Name       Token
+	Superclass *VariableExpr
+	Methods    []FunctionStmt
 }
 
 func (b ClassStmt) Accept(visitor StmtVisitor) interface{} {

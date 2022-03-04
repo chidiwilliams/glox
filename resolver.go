@@ -21,6 +21,7 @@ type classType int
 const (
 	classTypeNone classType = iota
 	classTypeClass
+	classTypeSubClass
 )
 
 type scopeVar struct {
@@ -225,6 +226,17 @@ func (r *Resolver) VisitSetExpr(expr ast.SetExpr) interface{} {
 	return nil
 }
 
+func (r *Resolver) VisitSuperExpr(expr ast.SuperExpr) interface{} {
+	if r.currentClass == classTypeNone {
+		reportTokenErr(r.stdErr, expr.Keyword, "Can't use 'super' outside of a class.")
+	} else if r.currentClass != classTypeSubClass {
+		reportTokenErr(r.stdErr, expr.Keyword, "Can't use 'super' in a class with no superclass.")
+	}
+
+	r.resolveLocal(expr, expr.Keyword)
+	return nil
+}
+
 func (r *Resolver) VisitThisExpr(expr ast.ThisExpr) interface{} {
 	if r.currentClass == classTypeNone {
 		reportTokenErr(r.stdErr, expr.Keyword, "Can't use 'this' outside of a class.")
@@ -273,6 +285,22 @@ func (r *Resolver) VisitClassStmt(stmt ast.ClassStmt) interface{} {
 
 	r.declare(stmt.Name)
 	r.define(stmt.Name)
+
+	if stmt.Superclass != nil && stmt.Name.Lexeme == stmt.Superclass.Name.Lexeme {
+		reportTokenErr(r.stdErr, stmt.Superclass.Name, "A class can't inherit from itself.")
+	}
+
+	if stmt.Superclass != nil {
+		r.currentClass = classTypeSubClass
+		r.resolveExpr(stmt.Superclass)
+	}
+
+	if stmt.Superclass != nil {
+		r.beginScope()
+		defer func() { r.endScope() }()
+
+		r.scopes.peek().set("super")
+	}
 
 	r.beginScope()
 

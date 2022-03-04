@@ -7,8 +7,9 @@ import (
 )
 
 type Class struct {
-	name    string
-	methods map[string]function
+	name       string
+	methods    map[string]function
+	superclass *Class
 }
 
 // arity returns the arity of the class's constructor
@@ -41,7 +42,13 @@ func (c Class) Get(in *Interpreter, name ast.Token) (interface{}, error) {
 
 func (c Class) findMethod(name string) (function, bool) {
 	method, ok := c.methods[name]
-	return method, ok
+	if ok {
+		return method, true
+	}
+	if c.superclass != nil {
+		return c.superclass.findMethod(name)
+	}
+	return function{}, false
 }
 
 type Instance interface {
@@ -52,10 +59,6 @@ type Instance interface {
 type instance struct {
 	class  Class
 	fields map[string]interface{}
-}
-
-func (i *instance) String() string {
-	return i.class.name + " instance"
 }
 
 // Get returns value of the field or method with the given name. If
