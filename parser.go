@@ -30,7 +30,7 @@ Parser grammar:
 
 	program      => declaration* EOF
 	declaration  => classDecl | funcDecl | varDecl | statement
-	classDecl    => "class" IDENTIFIER  "{" function* "}"
+	classDecl    => "class" IDENTIFIER ( "<" IDENTIFIER )? "{" function* "}"
 	funDecl      => "fun" function
 	function     => IDENTIFIER "(" parameters? ")" block
 	parameters   => IDENTIFIER ( "," IDENTIFIER )*
@@ -57,7 +57,8 @@ Parser grammar:
 	unary        => ( "!" | "-" ) unary | call
 	call         => primary ( "(" arguments? ")" | "." IDENTIFIER )*
 	arguments    => expression ( "," expression )*
-	primary      => NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" | IDENTIFIER | functionExpr
+	primary      => NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")"
+									| IDENTIFIER | functionExpr | "super" . IDENTIFIER
 	functionExpr => "fun" IDENTIFIER? "(" parameters? ")" block
 
 	Reference: C Operator Precedence https://en.cppreference.com/w/c/language/operator_precedence
@@ -69,7 +70,16 @@ Parser grammar:
 func (p *Parser) Parse() []ast.Stmt {
 	var statements []ast.Stmt
 	for !p.isAtEnd() {
-		statements = append(statements, p.declaration())
+		stmt, err := p.declaration()
+		if err == nil {
+			statements = append(statements, stmt)
+		} else {
+			if _, ok := err.(parseError); ok {
+				p.synchronize()
+			} else {
+				panic(err)
+			}
+		}
 	}
 	return statements
 }
@@ -77,7 +87,7 @@ func (p *Parser) Parse() []ast.Stmt {
 // declaration parses declaration statements. A declaration statement is
 // a variable declaration or a regular statement. If the statement contains
 // a parse error, it skips to the start of the next statement and returns nil.
-func (p *Parser) declaration() ast.Stmt {
+func (p *Parser) declaration() (ast.Stmt, error) {
 	defer func() {
 		if err := recover(); err != nil {
 			// If the error is a parseError, synchronize to
@@ -102,37 +112,69 @@ func (p *Parser) declaration() ast.Stmt {
 	return p.statement()
 }
 
-func (p *Parser) classDeclaration() ast.Stmt {
-	name := p.consume(ast.TokenIdentifier, "Expect class name.")
-	p.consume(ast.TokenLeftBrace, "Expect '{' before class body.")
+func (p *Parser) classDeclaration() (ast.Stmt, error) {
+	name, err := p.consume(ast.TokenIdentifier, "Expect class name.")
+	if err != nil {
+		return nil, err
+	}
+
+	var superclass *ast.VariableExpr
+	if p.match(ast.TokenLess) {
+		if _, err = p.consume(ast.TokenIdentifier, "Expect superclass name."); err != nil {
+			return nil, err
+		}
+		superclass = &ast.VariableExpr{Name: p.previous()}
+	}
+
+	if _, err = p.consume(ast.TokenLeftBrace, "Expect '{' before class body."); err != nil {
+		return nil, err
+	}
 
 	methods := make([]ast.FunctionStmt, 0)
 	for !p.check(ast.TokenRightBrace) && !p.isAtEnd() {
-		methods = append(methods, p.function("method"))
+		fn, err := p.function("method")
+		if err != nil {
+			return nil, err
+		}
+		methods = append(methods, fn)
 	}
 
-	p.consume(ast.TokenRightBrace, "Expect '}' after class body.")
-	return ast.ClassStmt{Name: name, Methods: methods}
+	if _, err = p.consume(ast.TokenRightBrace, "Expect '}' after class body."); err != nil {
+		return nil, err
+	}
+	return ast.ClassStmt{Name: name, Methods: methods, Superclass: superclass}, nil
 }
 
-func (p *Parser) varDeclaration() ast.Stmt {
-	name := p.consume(ast.TokenIdentifier, "Expect variable name")
+func (p *Parser) varDeclaration() (ast.Stmt, error) {
+	name, err := p.consume(ast.TokenIdentifier, "Expect variable name")
+	if err != nil {
+		return nil, err
+	}
 	var initializer ast.Expr
 	if p.match(ast.TokenEqual) {
-		initializer = p.expression()
+		initializer, err = p.expression()
+		if err != nil {
+			return nil, err
+		}
 	}
-	p.consume(ast.TokenSemicolon, "Expect ';' after variable declaration")
-	return ast.VarStmt{Name: name, Initializer: initializer}
+	if _, err = p.consume(ast.TokenSemicolon, "Expect ';' after variable declaration"); err != nil {
+		return nil, err
+	}
+	return ast.VarStmt{Name: name, Initializer: initializer}, nil
 }
 
 // statement parses statements. A statement can be a print,
 // if, while, block or expression statement.
-func (p *Parser) statement() ast.Stmt {
+func (p *Parser) statement() (ast.Stmt, error) {
 	if p.match(ast.TokenPrint) {
 		return p.printStatement()
 	}
 	if p.match(ast.TokenLeftBrace) {
-		return ast.BlockStmt{Statements: p.block()}
+		stmt, err := p.block()
+		if err != nil {
+			return nil, err
+		}
+		return ast.BlockStmt{Statements: stmt}, nil
 	}
 	if p.match(ast.TokenIf) {
 		return p.ifStatement()
@@ -149,17 +191,25 @@ func (p *Parser) statement() ast.Stmt {
 	}
 	if p.match(ast.TokenBreak) {
 		if p.loop == 0 {
-			panic(p.error(p.previous(), "Break outside loop"))
+			if err := p.error(p.previous(), "Break outside loop"); err != nil {
+				return nil, err
+			}
 		}
-		p.consume(ast.TokenSemicolon, "Expect ';' after break")
-		return ast.BreakStmt{}
+		if _, err := p.consume(ast.TokenSemicolon, "Expect ';' after break"); err != nil {
+			return nil, err
+		}
+		return ast.BreakStmt{}, nil
 	}
 	if p.match(ast.TokenContinue) {
 		if p.loop == 0 {
-			panic(p.error(p.previous(), "Continue outside loop"))
+			if err := p.error(p.previous(), "Continue outside loop"); err != nil {
+				return nil, err
+			}
 		}
-		p.consume(ast.TokenSemicolon, "Expect ';' after continue")
-		return ast.ContinueStmt{}
+		if _, err := p.consume(ast.TokenSemicolon, "Expect ';' after continue"); err != nil {
+			return nil, err
+		}
+		return ast.ContinueStmt{}, nil
 	}
 	if p.match(ast.TokenReturn) {
 		return p.returnStatement()
@@ -167,30 +217,52 @@ func (p *Parser) statement() ast.Stmt {
 	return p.expressionStatement()
 }
 
-func (p *Parser) forStatement() ast.Stmt {
-	p.consume(ast.TokenLeftParen, "Expect '(' after 'for'.")
+func (p *Parser) forStatement() (ast.Stmt, error) {
+	if _, err := p.consume(ast.TokenLeftParen, "Expect '(' after 'for'."); err != nil {
+		return nil, err
+	}
 
 	var initializer ast.Stmt
+	var err error
 	if p.match(ast.TokenSemicolon) {
 		initializer = nil
 	} else if p.match(ast.TokenVar) {
-		initializer = p.varDeclaration()
+		initializer, err = p.varDeclaration()
+		if err != nil {
+			return nil, err
+		}
 	} else {
-		initializer = p.expressionStatement()
+		initializer, err = p.expressionStatement()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	var condition ast.Expr
 	if !p.check(ast.TokenSemicolon) {
-		condition = p.expression()
+		condition, err = p.expression()
+		if err != nil {
+			return nil, err
+		}
 	}
-	p.consume(ast.TokenSemicolon, "Expect ';' after look condition.")
+	if _, err = p.consume(ast.TokenSemicolon, "Expect ';' after look condition."); err != nil {
+		return nil, err
+	}
 
 	var increment ast.Expr
 	if !p.check(ast.TokenRightParen) {
-		increment = p.expression()
+		increment, err = p.expression()
+		if err != nil {
+			return nil, err
+		}
 	}
-	p.consume(ast.TokenRightParen, "Expect ')' after for clauses.")
-	body := p.statement()
+	if _, err = p.consume(ast.TokenRightParen, "Expect ')' after for clauses."); err != nil {
+		return nil, err
+	}
+	body, err := p.statement()
+	if err != nil {
+		return nil, err
+	}
 
 	if increment != nil {
 		body = ast.BlockStmt{Statements: []ast.Stmt{body, ast.ExpressionStmt{Expr: increment}}}
@@ -205,224 +277,345 @@ func (p *Parser) forStatement() ast.Stmt {
 		body = ast.BlockStmt{Statements: []ast.Stmt{initializer, body}}
 	}
 
-	return body
+	return body, nil
 }
 
-func (p *Parser) printStatement() ast.Stmt {
-	expr := p.expression()
-	p.consume(ast.TokenSemicolon, "Expect ';' after value")
-	return ast.PrintStmt{Expr: expr}
+func (p *Parser) printStatement() (ast.Stmt, error) {
+	expr, err := p.expression()
+	if err != nil {
+		return nil, err
+	}
+	if _, err = p.consume(ast.TokenSemicolon, "Expect ';' after value"); err != nil {
+		return nil, err
+	}
+	return ast.PrintStmt{Expr: expr}, nil
 }
 
-func (p *Parser) returnStatement() ast.Stmt {
+func (p *Parser) returnStatement() (ast.Stmt, error) {
 	keyword := p.previous()
 	var value ast.Expr
+	var err error
 	if !p.check(ast.TokenSemicolon) {
-		value = p.expression()
+		value, err = p.expression()
+		if err != nil {
+			return nil, err
+		}
 	}
-	p.consume(ast.TokenSemicolon, "Expect ';' after return value.")
-	return ast.ReturnStmt{Keyword: keyword, Value: value}
+	if _, err = p.consume(ast.TokenSemicolon, "Expect ';' after return value."); err != nil {
+		return nil, err
+	}
+	return ast.ReturnStmt{Keyword: keyword, Value: value}, nil
 }
 
-func (p *Parser) block() []ast.Stmt {
+func (p *Parser) block() ([]ast.Stmt, error) {
 	var statements []ast.Stmt
 	for !p.check(ast.TokenRightBrace) && !p.isAtEnd() {
-		statements = append(statements, p.declaration())
+		stmt, err := p.declaration()
+		if err != nil {
+			return nil, err
+		}
+		statements = append(statements, stmt)
 	}
-	p.consume(ast.TokenRightBrace, "Expect '}' after block.")
-	return statements
+	if _, err := p.consume(ast.TokenRightBrace, "Expect '}' after block."); err != nil {
+		return nil, err
+	}
+	return statements, nil
 }
 
-func (p *Parser) ifStatement() ast.Stmt {
-	p.consume(ast.TokenLeftParen, "Expect '(' after 'if'.")
-	condition := p.expression()
-	p.consume(ast.TokenRightParen, "Expect ')' after if condition.")
+func (p *Parser) ifStatement() (ast.Stmt, error) {
+	if _, err := p.consume(ast.TokenLeftParen, "Expect '(' after 'if'."); err != nil {
+		return nil, err
+	}
+	condition, err := p.expression()
+	if err != nil {
+		return nil, err
+	}
+	if _, err = p.consume(ast.TokenRightParen, "Expect ')' after if condition."); err != nil {
+		return nil, err
+	}
 
-	thenBranch := p.statement()
+	thenBranch, err := p.statement()
+	if err != nil {
+		return nil, err
+	}
 	var elseBranch ast.Stmt
 	if p.match(ast.TokenElse) {
-		elseBranch = p.statement()
+		elseBranch, err = p.statement()
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	return ast.IfStmt{Condition: condition, ThenBranch: thenBranch, ElseBranch: elseBranch}
+	return ast.IfStmt{Condition: condition, ThenBranch: thenBranch, ElseBranch: elseBranch}, nil
 }
 
-func (p *Parser) whileStatement() ast.Stmt {
-	p.consume(ast.TokenLeftParen, "Expect '(' after 'while'.")
-	condition := p.expression()
-	p.consume(ast.TokenRightParen, "Expect ')' after while condition.")
-	body := p.statement()
-	return ast.WhileStmt{Condition: condition, Body: body}
+func (p *Parser) whileStatement() (ast.Stmt, error) {
+	if _, err := p.consume(ast.TokenLeftParen, "Expect '(' after 'while'."); err != nil {
+		return nil, err
+	}
+	condition, err := p.expression()
+	if err != nil {
+		return nil, err
+	}
+	if _, err = p.consume(ast.TokenRightParen, "Expect ')' after while condition."); err != nil {
+		return nil, err
+	}
+	body, err := p.statement()
+	if err != nil {
+		return nil, err
+	}
+	return ast.WhileStmt{Condition: condition, Body: body}, nil
 }
 
 // expressionStatement parses expression statements
-func (p *Parser) expressionStatement() ast.Stmt {
+func (p *Parser) expressionStatement() (ast.Stmt, error) {
 	// parse the next expression
-	expr := p.expression()
+	expr, err := p.expression()
+	if err != nil {
+		return nil, err
+	}
 	// panic if the next token is not a semicolon
-	p.consume(ast.TokenSemicolon, "Expect ';' after value")
-	return ast.ExpressionStmt{Expr: expr}
+	if _, err = p.consume(ast.TokenSemicolon, "Expect ';' after value"); err != nil {
+		return nil, err
+	}
+	return ast.ExpressionStmt{Expr: expr}, nil
 }
 
-func (p *Parser) function(kind string) ast.FunctionStmt {
-	name := p.consume(ast.TokenIdentifier, "Expect "+kind+" name.")
+func (p *Parser) function(kind string) (ast.FunctionStmt, error) {
+	name, err := p.consume(ast.TokenIdentifier, "Expect "+kind+" name.")
+	if err != nil {
+		return ast.FunctionStmt{}, err
+	}
 
 	var parameters []ast.Token
 
 	if kind != "method" || p.check(ast.TokenLeftParen) {
 		parameters = make([]ast.Token, 0)
-		p.consume(ast.TokenLeftParen, "Expect '(' after "+kind+" name.")
+		if _, err = p.consume(ast.TokenLeftParen, "Expect '(' after "+kind+" name."); err != nil {
+			return ast.FunctionStmt{}, err
+		}
 
 		if !p.check(ast.TokenRightParen) {
 			for {
 				if len(parameters) >= 255 {
-					p.error(p.peek(), "Can't have more than 255 parameters.")
+					err := p.error(p.peek(), "Can't have more than 255 parameters.")
+					if err != nil {
+						return ast.FunctionStmt{}, err
+					}
 				}
-				parameters = append(parameters, p.consume(ast.TokenIdentifier, "Expect parameter name."))
+				param, err := p.consume(ast.TokenIdentifier, "Expect parameter name.")
+				if err != nil {
+					return ast.FunctionStmt{}, err
+				}
+				parameters = append(parameters, param)
 				if !p.match(ast.TokenComma) {
 					break
 				}
 			}
 		}
 
-		p.consume(ast.TokenRightParen, "Expect ')' after parameters")
+		if _, err = p.consume(ast.TokenRightParen, "Expect ')' after parameters"); err != nil {
+			return ast.FunctionStmt{}, err
+		}
 	}
 
-	p.consume(ast.TokenLeftBrace, "Expect '{' before "+kind+" body.")
+	if _, err = p.consume(ast.TokenLeftBrace, "Expect '{' before "+kind+" body."); err != nil {
+		return ast.FunctionStmt{}, err
+	}
 
-	body := p.block()
-	return ast.FunctionStmt{Name: name, Params: parameters, Body: body}
+	body, err := p.block()
+	if err != nil {
+		return ast.FunctionStmt{}, err
+	}
+	return ast.FunctionStmt{Name: name, Params: parameters, Body: body}, nil
 }
 
-func (p *Parser) expression() ast.Expr {
+func (p *Parser) expression() (ast.Expr, error) {
 	return p.series()
 }
 
-func (p *Parser) series() ast.Expr {
-	expr := p.assignment()
+func (p *Parser) series() (ast.Expr, error) {
+	expr, err := p.assignment()
+	if err != nil {
+		return nil, err
+	}
 	for p.match(ast.TokenComma) {
 		operator := p.previous()
-		right := p.assignment()
+		right, err := p.assignment()
+		if err != nil {
+			return nil, err
+		}
 		expr = ast.BinaryExpr{Left: expr, Operator: operator, Right: right}
 	}
 
-	return expr
+	return expr, nil
 }
 
-func (p *Parser) assignment() ast.Expr {
-	expr := p.ternary()
+func (p *Parser) assignment() (ast.Expr, error) {
+	expr, err := p.ternary()
+	if err != nil {
+		return nil, err
+	}
 	if p.match(ast.TokenEqual) {
 		equals := p.previous()
-		value := p.assignment()
+		value, err := p.assignment()
+		if err != nil {
+			return nil, err
+		}
 		if varExpr, ok := expr.(ast.VariableExpr); ok {
-			return ast.AssignExpr{Name: varExpr.Name, Value: value}
+			return ast.AssignExpr{Name: varExpr.Name, Value: value}, nil
 		} else if getExpr, ok := expr.(ast.GetExpr); ok {
 			return ast.SetExpr{
 				Object: getExpr.Object,
 				Name:   getExpr.Name,
 				Value:  value,
-			}
+			}, nil
 		}
-		_ = p.error(equals, "Invalid assignment target.")
+		return nil, p.error(equals, "Invalid assignment target.")
 	}
 
-	return expr
+	return expr, nil
 }
 
-func (p *Parser) ternary() ast.Expr {
-	expr := p.or()
+func (p *Parser) ternary() (ast.Expr, error) {
+	expr, err := p.or()
+	if err != nil {
+		return nil, err
+	}
 
 	if p.match(ast.TokenQuestionMark) {
-		cond1 := p.ternary()
-		p.consume(ast.TokenColon, "Expect ':' after conditional.")
-		cond2 := p.ternary()
+		cond1, err := p.ternary()
+		if err != nil {
+			return nil, err
+		}
+		if _, err = p.consume(ast.TokenColon, "Expect ':' after conditional."); err != nil {
+			return nil, err
+		}
+		cond2, err := p.ternary()
+		if err != nil {
+			return nil, err
+		}
 		expr = ast.TernaryExpr{Cond: expr, Left: cond1, Right: cond2}
 	}
 
-	return expr
+	return expr, nil
 }
 
-func (p *Parser) or() ast.Expr {
-	expr := p.and()
+func (p *Parser) or() (ast.Expr, error) {
+	expr, err := p.and()
+	if err != nil {
+		return nil, err
+	}
 	for p.match(ast.TokenOr) {
 		operator := p.previous()
-		right := p.and()
+		right, err := p.and()
+		if err != nil {
+			return nil, err
+		}
 		expr = ast.LogicalExpr{Left: expr, Operator: operator, Right: right}
 	}
-	return expr
+	return expr, nil
 }
 
-func (p *Parser) and() ast.Expr {
-	expr := p.equality()
+func (p *Parser) and() (ast.Expr, error) {
+	expr, err := p.equality()
+	if err != nil {
+		return nil, err
+	}
 	for p.match(ast.TokenAnd) {
 		operator := p.previous()
-		right := p.equality()
+		right, err := p.equality()
+		if err != nil {
+			return nil, err
+		}
 		expr = ast.LogicalExpr{Left: expr, Operator: operator, Right: right}
 	}
-	return expr
+	return expr, nil
 }
 
-func (p *Parser) equality() ast.Expr {
-	expr := p.comparison()
+func (p *Parser) equality() (ast.Expr, error) {
+	expr, err := p.comparison()
+	if err != nil {
+		return nil, err
+	}
 
 	for p.match(ast.TokenBangEqual, ast.TokenEqualEqual) {
 		operator := p.previous()
-		right := p.comparison()
+		right, err := p.comparison()
+		if err != nil {
+			return nil, err
+		}
 		expr = ast.BinaryExpr{Left: expr, Operator: operator, Right: right}
 	}
 
-	return expr
+	return expr, nil
 }
 
-func (p *Parser) comparison() ast.Expr {
-	expr := p.term()
+func (p *Parser) comparison() (ast.Expr, error) {
+	expr, err := p.term()
+	if err != nil {
+		return nil, err
+	}
 
 	for p.match(ast.TokenGreater, ast.TokenGreaterEqual, ast.TokenLess, ast.TokenLessEqual) {
 		operator := p.previous()
-		right := p.term()
+		right, err := p.term()
+		if err != nil {
+			return nil, err
+		}
 		expr = ast.BinaryExpr{Left: expr, Operator: operator, Right: right}
 	}
 
-	return expr
+	return expr, nil
 }
 
-func (p *Parser) term() ast.Expr {
-	expr := p.factor()
+func (p *Parser) term() (ast.Expr, error) {
+	expr, err := p.factor()
+	if err != nil {
+		return nil, err
+	}
 
 	for p.match(ast.TokenMinus, ast.TokenPlus) {
 		operator := p.previous()
-		right := p.factor()
+		right, err := p.factor()
+		if err != nil {
+			return nil, err
+		}
 		expr = ast.BinaryExpr{Left: expr, Operator: operator, Right: right}
 	}
 
-	return expr
+	return expr, nil
 }
 
-func (p *Parser) factor() ast.Expr {
-	expr := p.unary()
+func (p *Parser) factor() (ast.Expr, error) {
+	expr, err := p.unary()
+	if err != nil {
+		return nil, err
+	}
 
 	for p.match(ast.TokenSlash, ast.TokenStar) {
 		operator := p.previous()
-		right := p.unary()
+		right, err := p.unary()
+		if err != nil {
+			return nil, err
+		}
 		expr = ast.BinaryExpr{Left: expr, Operator: operator, Right: right}
 	}
 
-	return expr
+	return expr, nil
 }
 
-func (p *Parser) unary() ast.Expr {
+func (p *Parser) unary() (ast.Expr, error) {
 	if p.match(ast.TokenBang, ast.TokenMinus) {
 		operator := p.previous()
-		right := p.unary()
-		return ast.UnaryExpr{Operator: operator, Right: right}
+		right, err := p.unary()
+		if err != nil {
+			return nil, err
+		}
+		return ast.UnaryExpr{Operator: operator, Right: right}, nil
 	}
 
-	expr, err := p.call()
-	if err != nil {
-		panic(err)
-	}
-
-	return expr
+	return p.call()
 }
 
 func (p *Parser) call() (ast.Expr, error) {
@@ -433,9 +626,15 @@ func (p *Parser) call() (ast.Expr, error) {
 
 	for {
 		if p.match(ast.TokenLeftParen) {
-			expr = p.finishCall(expr)
+			expr, err = p.finishCall(expr)
+			if err != nil {
+				return nil, err
+			}
 		} else if p.match(ast.TokenDot) {
-			name := p.consume(ast.TokenIdentifier, "Expect property name after '.'.")
+			name, err := p.consume(ast.TokenIdentifier, "Expect property name after '.'.")
+			if err != nil {
+				return nil, err
+			}
 			expr = ast.GetExpr{Object: expr, Name: name}
 		} else {
 			break
@@ -445,21 +644,31 @@ func (p *Parser) call() (ast.Expr, error) {
 	return expr, nil
 }
 
-func (p *Parser) finishCall(callee ast.Expr) ast.Expr {
+func (p *Parser) finishCall(callee ast.Expr) (ast.Expr, error) {
 	args := make([]ast.Expr, 0)
 	if !p.check(ast.TokenRightParen) {
 		for {
 			if len(args) >= 255 {
-				p.error(p.peek(), "Can't have more than 255 arguments.")
+				err := p.error(p.peek(), "Can't have more than 255 arguments.")
+				if err != nil {
+					return nil, err
+				}
 			}
-			args = append(args, p.assignment()) // Didn't use p.expression() because an expression can be a series!
+			expr, err := p.assignment()
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, expr) // Didn't use p.expression() because an expression can be a series!
 			if !p.match(ast.TokenComma) {
 				break
 			}
 		}
 	}
-	paren := p.consume(ast.TokenRightParen, "Expect ')' after arguments.")
-	return ast.CallExpr{Callee: callee, Paren: paren, Arguments: args}
+	paren, err := p.consume(ast.TokenRightParen, "Expect ')' after arguments.")
+	if err != nil {
+		return nil, err
+	}
+	return ast.CallExpr{Callee: callee, Paren: paren, Arguments: args}, nil
 }
 
 func (p *Parser) primary() (ast.Expr, error) {
@@ -473,15 +682,30 @@ func (p *Parser) primary() (ast.Expr, error) {
 	case p.match(ast.TokenNumber, ast.TokenString):
 		return ast.LiteralExpr{Value: p.previous().Literal}, nil
 	case p.match(ast.TokenLeftParen):
-		expr := p.expression()
-		p.consume(ast.TokenRightParen, "Expect ')' after expression.")
+		expr, err := p.expression()
+		if err != nil {
+			return nil, err
+		}
+		if _, err = p.consume(ast.TokenRightParen, "Expect ')' after expression."); err != nil {
+			return nil, err
+		}
 		return ast.GroupingExpr{Expression: expr}, nil
 	case p.match(ast.TokenIdentifier):
 		return ast.VariableExpr{Name: p.previous()}, nil
 	case p.match(ast.TokenFun):
-		return p.functionExpression(), nil
+		return p.functionExpression()
 	case p.match(ast.TokenThis):
 		return ast.ThisExpr{Keyword: p.previous()}, nil
+	case p.match(ast.TokenSuper):
+		keyword := p.previous()
+		if _, err := p.consume(ast.TokenDot, "Expect '.' after 'super'."); err != nil {
+			return nil, err
+		}
+		method, err := p.consume(ast.TokenIdentifier, "Expect superclass method name.")
+		if err != nil {
+			return nil, err
+		}
+		return ast.SuperExpr{Keyword: keyword, Method: method}, nil
 	}
 
 	return nil, p.error(p.peek(), "Expect expression.")
@@ -489,43 +713,62 @@ func (p *Parser) primary() (ast.Expr, error) {
 
 // functionExpression parses a function expression.
 // A function expression may be a named or anonymous function.
-func (p *Parser) functionExpression() ast.Expr {
+func (p *Parser) functionExpression() (ast.Expr, error) {
 	var name *ast.Token
 	if !p.check(ast.TokenLeftParen) {
-		fnName := p.consume(ast.TokenIdentifier, "Expect function name.")
+		fnName, err := p.consume(ast.TokenIdentifier, "Expect function name.")
+		if err != nil {
+			return nil, err
+		}
 		name = &fnName
 	}
 
-	p.consume(ast.TokenLeftParen, "Expect '(' after function name.")
+	if _, err := p.consume(ast.TokenLeftParen, "Expect '(' after function name."); err != nil {
+		return nil, err
+	}
 
 	parameters := make([]ast.Token, 0)
 	if !p.check(ast.TokenRightParen) {
 		for {
 			if len(parameters) >= 255 {
-				p.error(p.peek(), "Can't have more than 255 parameters.")
+				err := p.error(p.peek(), "Can't have more than 255 parameters.")
+				if err != nil {
+					return nil, err
+				}
 			}
-			parameters = append(parameters, p.consume(ast.TokenIdentifier, "Expect parameter name."))
+			param, err := p.consume(ast.TokenIdentifier, "Expect parameter name.")
+			if err != nil {
+				return nil, err
+			}
+			parameters = append(parameters, param)
 			if !p.match(ast.TokenComma) {
 				break
 			}
 		}
 	}
 
-	p.consume(ast.TokenRightParen, "Expect ')' after parameters")
-	p.consume(ast.TokenLeftBrace, "Expect '{' before function body.")
+	if _, err := p.consume(ast.TokenRightParen, "Expect ')' after parameters"); err != nil {
+		return nil, err
+	}
+	if _, err := p.consume(ast.TokenLeftBrace, "Expect '{' before function body."); err != nil {
+		return nil, err
+	}
 
-	body := p.block()
+	body, err := p.block()
+	if err != nil {
+		return nil, err
+	}
 
-	return ast.FunctionExpr{Name: name, Params: parameters, Body: body}
+	return ast.FunctionExpr{Name: name, Params: parameters, Body: body}, nil
 }
 
 // consume checks that the next ast.Token is of the given ast.TokenType and then
 // advances to the next token. If the check fails, it panics with the given message.
-func (p *Parser) consume(tokenType ast.TokenType, message string) ast.Token {
+func (p *Parser) consume(tokenType ast.TokenType, message string) (ast.Token, error) {
 	if p.check(tokenType) {
-		return p.advance()
+		return p.advance(), nil
 	}
-	panic(p.error(p.peek(), message))
+	return ast.Token{}, p.error(p.peek(), message)
 }
 
 func (p *Parser) error(Token ast.Token, message string) error {
