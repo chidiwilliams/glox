@@ -45,7 +45,7 @@ func runPrompt() {
 		}
 
 		line := inputScanner.Text()
-		run(line)
+		fmt.Println(r.run(line))
 		hadError = false
 	}
 }
@@ -56,7 +56,7 @@ func runFile(path string) {
 		panic(err)
 	}
 
-	run(string(file))
+	r.run(string(file))
 	if hadError {
 		os.Exit(65)
 	}
@@ -74,7 +74,7 @@ type runner struct {
 	stdErr      io.Writer
 }
 
-func (r *runner) run(source string) {
+func (r *runner) run(source string) interface{} {
 	scanner := scan.NewScanner(source, r.stdErr)
 	tokens := scanner.ScanTokens()
 
@@ -83,17 +83,17 @@ func (r *runner) run(source string) {
 	statements, hadError = parser.Parse()
 
 	if hadError {
-		return
+		return nil
 	}
 
 	resolver := resolve.NewResolver(r.interpreter, r.stdErr)
 	hadError = resolver.ResolveStmts(statements)
 
+	if hadError {
+		return nil
+	}
+
 	var result interface{}
 	result, hadRuntimeError = r.interpreter.Interpret(statements)
-	fmt.Println(result)
-}
-
-func run(source string) {
-	r.run(source)
+	return result
 }
