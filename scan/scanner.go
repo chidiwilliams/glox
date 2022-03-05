@@ -1,6 +1,8 @@
-package main
+package scan
 
 import (
+	"fmt"
+	"io"
 	"strconv"
 
 	"glox/ast"
@@ -14,11 +16,12 @@ type Scanner struct {
 	line    int
 	source  string
 	tokens  []ast.Token
+	stdErr  io.Writer
 }
 
 // NewScanner returns a new Scanner
-func NewScanner(source string) *Scanner {
-	return &Scanner{source: source}
+func NewScanner(source string, stdErr io.Writer) *Scanner {
+	return &Scanner{source: source, stdErr: stdErr}
 }
 
 // ScanTokens returns a slice of tokens representing the source text
@@ -121,7 +124,7 @@ func (s *Scanner) scanToken() {
 		} else if s.isAlpha(char) {
 			s.identifier()
 		} else {
-			reportErr(nil, s.line, "Unexpected character.")
+			s.error(s.line, "Unexpected character.")
 		}
 	}
 }
@@ -173,7 +176,7 @@ func (s *Scanner) string() {
 	}
 
 	if s.isAtEnd() {
-		reportErr(nil, s.line, "Unterminated string.")
+		s.error(s.line, "Unterminated string.")
 		return
 	}
 
@@ -258,4 +261,8 @@ func (s *Scanner) identifier() {
 
 func (s *Scanner) isAlphaNumeric(char rune) bool {
 	return s.isAlpha(char) || s.isDigit(char)
+}
+
+func (s *Scanner) error(line int, message string) {
+	_, _ = s.stdErr.Write([]byte(fmt.Sprintf("[line %d] Error%s: %s\n", line, "", message)))
 }

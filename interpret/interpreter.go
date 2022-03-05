@@ -1,4 +1,4 @@
-package main
+package interpret
 
 import (
 	"fmt"
@@ -6,6 +6,15 @@ import (
 
 	"glox/ast"
 )
+
+type runtimeError struct {
+	token ast.Token
+	msg   string
+}
+
+func (r runtimeError) Error() string {
+	return fmt.Sprintf("%s\n[line %d]", r.msg, r.token.Line)
+}
 
 // Interpreter holds the globals and current execution
 // environment for a program to be executed
@@ -37,31 +46,35 @@ func NewInterpreter(stdOut io.Writer, stdErr io.Writer) *Interpreter {
 }
 
 // Interpret interprets a list of statements within the interpreter's environment
-func (in *Interpreter) Interpret(stmts []ast.Stmt) interface{} {
+func (in *Interpreter) Interpret(stmts []ast.Stmt) (result interface{}, hadRuntimeError bool) {
 	defer func() {
 		if err := recover(); err != nil {
 			if e, ok := err.(runtimeError); ok {
-				reportRuntimeErr(in.stdErr, e)
+				_, _ = in.stdErr.Write([]byte(e.Error()))
+				hadRuntimeError = true
 			} else {
 				fmt.Printf("Error: %s\n", err)
 			}
 		}
 	}()
 
-	var result interface{}
 	for _, statement := range stmts {
 		result = in.execute(statement)
 	}
 
-	return result
+	return
+}
+
+func (in Interpreter) error(token ast.Token, message string) {
+	panic(runtimeError{token: token, msg: message})
 }
 
 func (in *Interpreter) execute(stmt ast.Stmt) interface{} {
 	return stmt.Accept(in)
 }
 
-// resolve sets the depth of a local variable access
-func (in *Interpreter) resolve(expr ast.Expr, depth int) {
+// Resolve sets the depth of a local variable access
+func (in *Interpreter) Resolve(expr ast.Expr, depth int) {
 	in.locals[expr] = depth
 }
 
@@ -79,7 +92,7 @@ func (in *Interpreter) VisitClassStmt(stmt ast.ClassStmt) interface{} {
 	if stmt.Superclass != nil {
 		superclassValue, ok := in.evaluate(stmt.Superclass).(Class)
 		if !ok {
-			panic(runtimeError{token: stmt.Superclass.Name, msg: "Superclass must be a class."})
+			in.error(stmt.Superclass.Name, "Superclass must be a class.")
 		}
 		superclass = &superclassValue
 	}
@@ -246,12 +259,12 @@ func (in *Interpreter) VisitCallExpr(expr ast.CallExpr) interface{} {
 
 	fn, ok := (callee).(callable)
 	if !ok {
-		panic(runtimeError{token: expr.Paren, msg: "Can only call functions and classes."})
+		in.error(expr.Paren, "Can only call functions and classes.")
 	}
 
 	if len(args) != fn.arity() {
-		panic(runtimeError{token: expr.Paren,
-			msg: fmt.Sprintf("Expected %d arguments but got %d.", fn.arity(), len(args))})
+		in.error(expr.Paren,
+			fmt.Sprintf("Expected %d arguments but got %d.", fn.arity(), len(args)))
 	}
 
 	return fn.call(in, args)
@@ -266,7 +279,8 @@ func (in *Interpreter) VisitGetExpr(expr ast.GetExpr) interface{} {
 		}
 		return val
 	}
-	panic(runtimeError{token: expr.Name, msg: "Only instances have properties."})
+	in.error(expr.Name, "Only instances have properties.")
+	return nil
 }
 
 func (in *Interpreter) VisitVariableExpr(expr ast.VariableExpr) interface{} {
@@ -302,7 +316,7 @@ func (in *Interpreter) VisitBinaryExpr(expr ast.BinaryExpr) interface{} {
 		if leftIsString && rightIsString {
 			return left.(string) + right.(string)
 		}
-		panic(runtimeError{expr.Operator, "Operands must be two numbers or two strings"})
+		in.error(expr.Operator, "Operands must be two numbers or two strings")
 	case ast.TokenMinus:
 		if err := in.checkNumberOperands(expr.Operator, left, right); err != nil {
 			panic(err)
@@ -373,7 +387,7 @@ func (in *Interpreter) VisitSetExpr(expr ast.SetExpr) interface{} {
 
 	inst, ok := object.(*instance)
 	if !ok {
-		panic(runtimeError{token: expr.Name, msg: "Only instances have fields."})
+		in.error(expr.Name, "Only instances have fields.")
 	}
 
 	value := in.evaluate(expr.Value)
@@ -387,7 +401,7 @@ func (in *Interpreter) VisitSuperExpr(expr ast.SuperExpr) interface{} {
 	object := in.environment.getAt(distance-1, "this").(*instance)
 	method, ok := superclass.findMethod(expr.Method.Lexeme)
 	if !ok {
-		panic(runtimeError{token: expr.Method, msg: fmt.Sprintf("Undefined property '%s'.", expr.Method.Lexeme)})
+		in.error(expr.Method, fmt.Sprintf("Undefined property '%s'.", expr.Method.Lexeme))
 	}
 	return method.bind(object)
 }

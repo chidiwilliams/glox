@@ -1,10 +1,11 @@
-package main
+package resolve
 
 import (
 	"fmt"
 	"io"
 
 	"glox/ast"
+	"glox/interpret"
 )
 
 type functionType int
@@ -82,7 +83,7 @@ func (s *scopes) pop() {
 // variable is accessed in the program.
 type Resolver struct {
 	// the program Interpreter
-	interpreter *Interpreter
+	interpreter *interpret.Interpreter
 	// scopes is a stack of scope-s
 	scopes scopes
 	// currentFunction is the functionType of the
@@ -94,11 +95,20 @@ type Resolver struct {
 	// to report an error when "this" appears outside a class
 	currentClass classType
 	stdErr       io.Writer
+	hadError     bool
 }
 
 // NewResolver returns a new Resolver
-func NewResolver(interpreter *Interpreter, stdErr io.Writer) *Resolver {
+func NewResolver(interpreter *interpret.Interpreter, stdErr io.Writer) *Resolver {
 	return &Resolver{interpreter: interpreter, stdErr: stdErr}
+}
+
+// ResolveStmts resolves all the local variables in a list of statements
+func (r *Resolver) ResolveStmts(statements []ast.Stmt) (hadError bool) {
+	for _, statement := range statements {
+		r.resolveStmt(statement)
+	}
+	return r.hadError
 }
 
 // resolveExpr resolves an expression
@@ -109,13 +119,6 @@ func (r *Resolver) resolveExpr(expr ast.Expr) {
 // resolveStmt resolves a statement
 func (r *Resolver) resolveStmt(stmt ast.Stmt) {
 	stmt.Accept(r)
-}
-
-// resolveStmts resolves all the local variables in a list of statements
-func (r *Resolver) resolveStmts(statements []ast.Stmt) {
-	for _, statement := range statements {
-		r.resolveStmt(statement)
-	}
 }
 
 // resolveFunction resolves a function statement. It begins a
@@ -131,7 +134,7 @@ func (r *Resolver) resolveFunction(function ast.FunctionStmt, fnType functionTyp
 		r.declare(param)
 		r.define(param)
 	}
-	r.resolveStmts(function.Body)
+	r.ResolveStmts(function.Body)
 	r.endScope()
 }
 
@@ -145,7 +148,7 @@ func (r *Resolver) beginScope() {
 func (r *Resolver) endScope() {
 	for name, v := range r.scopes.peek() {
 		if !v.used {
-			reportTokenErr(r.stdErr, v.token, fmt.Sprintf("Variable '%s' declared but not used.", name))
+			r.error(v.token, fmt.Sprintf("Variable '%s' declared but not used.", name))
 		}
 	}
 
@@ -193,7 +196,7 @@ func (r *Resolver) VisitFunctionExpr(expr ast.FunctionExpr) interface{} {
 		r.declare(param)
 		r.define(param)
 	}
-	r.resolveStmts(expr.Body)
+	r.ResolveStmts(expr.Body)
 	r.endScope()
 
 	r.endScope()
@@ -228,9 +231,9 @@ func (r *Resolver) VisitSetExpr(expr ast.SetExpr) interface{} {
 
 func (r *Resolver) VisitSuperExpr(expr ast.SuperExpr) interface{} {
 	if r.currentClass == classTypeNone {
-		reportTokenErr(r.stdErr, expr.Keyword, "Can't use 'super' outside of a class.")
+		r.error(expr.Keyword, "Can't use 'super' outside of a class.")
 	} else if r.currentClass != classTypeSubClass {
-		reportTokenErr(r.stdErr, expr.Keyword, "Can't use 'super' in a class with no superclass.")
+		r.error(expr.Keyword, "Can't use 'super' in a class with no superclass.")
 	}
 
 	r.resolveLocal(expr, expr.Keyword)
@@ -239,7 +242,7 @@ func (r *Resolver) VisitSuperExpr(expr ast.SuperExpr) interface{} {
 
 func (r *Resolver) VisitThisExpr(expr ast.ThisExpr) interface{} {
 	if r.currentClass == classTypeNone {
-		reportTokenErr(r.stdErr, expr.Keyword, "Can't use 'this' outside of a class.")
+		r.error(expr.Keyword, "Can't use 'this' outside of a class.")
 		return nil
 	}
 
@@ -262,7 +265,7 @@ func (r *Resolver) VisitUnaryExpr(expr ast.UnaryExpr) interface{} {
 func (r *Resolver) VisitVariableExpr(expr ast.VariableExpr) interface{} {
 	if len(r.scopes) > 0 {
 		if declared, defined := r.scopes.peek().has(expr.Name.Lexeme); declared && !defined { // if the variable name is declared but not defined, report error
-			reportTokenErr(r.stdErr, expr.Name, "Can't read local variable in its own initializer.")
+			r.error(expr.Name, "Can't read local variable in its own initializer.")
 		}
 	}
 
@@ -272,7 +275,7 @@ func (r *Resolver) VisitVariableExpr(expr ast.VariableExpr) interface{} {
 
 func (r *Resolver) VisitBlockStmt(stmt ast.BlockStmt) interface{} {
 	r.beginScope()
-	r.resolveStmts(stmt.Statements)
+	r.ResolveStmts(stmt.Statements)
 	r.endScope()
 	return nil
 }
@@ -287,7 +290,7 @@ func (r *Resolver) VisitClassStmt(stmt ast.ClassStmt) interface{} {
 	r.define(stmt.Name)
 
 	if stmt.Superclass != nil && stmt.Name.Lexeme == stmt.Superclass.Name.Lexeme {
-		reportTokenErr(r.stdErr, stmt.Superclass.Name, "A class can't inherit from itself.")
+		r.error(stmt.Superclass.Name, "A class can't inherit from itself.")
 	}
 
 	if stmt.Superclass != nil {
@@ -348,12 +351,12 @@ func (r *Resolver) VisitPrintStmt(stmt ast.PrintStmt) interface{} {
 
 func (r *Resolver) VisitReturnStmt(stmt ast.ReturnStmt) interface{} {
 	if r.currentFunction == functionTypeNone {
-		reportTokenErr(r.stdErr, stmt.Keyword, "Can't return from top-level code.")
+		r.error(stmt.Keyword, "Can't return from top-level code.")
 	}
 
 	if stmt.Value != nil {
 		if r.currentFunction == functionTypeInitializer {
-			reportTokenErr(r.stdErr, stmt.Keyword, "Can't return a value from an initializer;")
+			r.error(stmt.Keyword, "Can't return a value from an initializer;")
 		}
 		r.resolveExpr(stmt.Value)
 	}
@@ -395,7 +398,7 @@ func (r *Resolver) declare(name ast.Token) {
 
 	sc := r.scopes.peek()
 	if _, defined := sc.has(name.Lexeme); defined {
-		reportTokenErr(r.stdErr, name, "Already a variable with this name in this scope")
+		r.error(name, "Already a variable with this name in this scope")
 	}
 
 	sc.declare(name.Lexeme, name)
@@ -420,9 +423,21 @@ func (r *Resolver) resolveLocal(expr ast.Expr, name ast.Token) {
 		s := r.scopes[i]
 		if _, defined := s.has(name.Lexeme); defined {
 			depth := len(r.scopes) - 1 - i
-			r.interpreter.resolve(expr, depth)
+			r.interpreter.Resolve(expr, depth)
 			s.use(name.Lexeme)
 			return
 		}
 	}
+}
+
+func (r *Resolver) error(token ast.Token, message string) {
+	var where string
+	if token.TokenType == ast.TokenEof {
+		where = " at end"
+	} else {
+		where = " at '" + token.Lexeme + "'"
+	}
+
+	_, _ = r.stdErr.Write([]byte(fmt.Sprintf("[line %d] Error%s: %s\n", token.Line, where, message)))
+	r.hadError = true
 }

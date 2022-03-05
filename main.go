@@ -8,6 +8,12 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+
+	"glox/ast"
+	"glox/interpret"
+	"glox/parse"
+	"glox/resolve"
+	"glox/scan"
 )
 
 var (
@@ -58,34 +64,31 @@ func runFile(path string) {
 }
 
 func newRunner(stdOut io.Writer, stdErr io.Writer) runner {
-	hadError = false // FIXME: make this a field in the runner?
-	return runner{interpreter: NewInterpreter(stdOut, stdErr), stdErr: stdErr}
+	return runner{interpreter: interpret.NewInterpreter(stdOut, stdErr), stdErr: stdErr}
 }
 
 type runner struct {
-	interpreter *Interpreter
+	interpreter *interpret.Interpreter
 	stdErr      io.Writer
 }
 
 func (r runner) run(source string) {
-	scanner := NewScanner(source)
+	scanner := scan.NewScanner(source, r.stdErr)
 	tokens := scanner.ScanTokens()
 
-	parser := NewParser(tokens)
-	statements := parser.Parse()
+	parser := parse.NewParser(tokens, r.stdErr)
+	var statements []ast.Stmt
+	statements, hadError = parser.Parse()
 
 	if hadError {
 		return
 	}
 
-	resolver := NewResolver(r.interpreter, r.stdErr)
-	resolver.resolveStmts(statements)
+	resolver := resolve.NewResolver(r.interpreter, r.stdErr)
+	hadError = resolver.ResolveStmts(statements)
 
-	if hadError {
-		return
-	}
-
-	result := r.interpreter.Interpret(statements)
+	var result interface{}
+	result, hadRuntimeError = r.interpreter.Interpret(statements)
 	fmt.Println(result)
 }
 

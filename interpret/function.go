@@ -1,6 +1,8 @@
-package main
+package interpret
 
-import "glox/ast"
+import (
+	"glox/ast"
+)
 
 type callable interface {
 	arity() int
@@ -44,10 +46,6 @@ func (f function) call(interpreter *Interpreter, args []interface{}) (returnVal 
 	}
 
 	return nil
-}
-
-func (f function) String() string {
-	return "<fn " + f.declaration.Name.Lexeme + ">"
 }
 
 func (f function) bind(i *instance) function {

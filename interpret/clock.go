@@ -1,6 +1,8 @@
-package main
+package interpret
 
-import "time"
+import (
+	"time"
+)
 
 type clock struct{}
 
