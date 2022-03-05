@@ -19,6 +19,8 @@ import (
 var (
 	hadError        bool
 	hadRuntimeError bool
+
+	r = newRunner(os.Stdout, os.Stderr)
 )
 
 func main() {
@@ -72,7 +74,7 @@ type runner struct {
 	stdErr      io.Writer
 }
 
-func (r runner) run(source string) {
+func (r *runner) run(source string) {
 	scanner := scan.NewScanner(source, r.stdErr)
 	tokens := scanner.ScanTokens()
 
@@ -93,6 +95,5 @@ func (r runner) run(source string) {
 }
 
 func run(source string) {
-	r := newRunner(os.Stdout, os.Stderr)
 	r.run(source)
 }

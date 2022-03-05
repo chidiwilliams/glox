@@ -1,1 +1,3 @@
-module "github.com/chidiwilliams/glox"
+module github.com/chidiwilliams/glox
+
+go 1.17
