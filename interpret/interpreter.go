@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"glox/ast"
+	"github.com/chidiwilliams/glox/ast"
 )
 
 type runtimeError struct {

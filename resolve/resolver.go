@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"io"
 
-	"glox/ast"
-	"glox/interpret"
+	"github.com/chidiwilliams/glox/ast"
+	"github.com/chidiwilliams/glox/interpret"
 )
 
 type functionType int

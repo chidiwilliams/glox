@@ -1,8 +1,6 @@
 package interpret
 
-import (
-	"glox/ast"
-)
+import "github.com/chidiwilliams/glox/ast"
 
 type callable interface {
 	arity() int

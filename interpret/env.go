@@ -3,7 +3,7 @@ package interpret
 import (
 	"fmt"
 
-	"glox/ast"
+	"github.com/chidiwilliams/glox/ast"
 )
 
 type environment struct {

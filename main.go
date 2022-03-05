@@ -9,11 +9,11 @@ import (
 	"io/ioutil"
 	"os"
 
-	"glox/ast"
-	"glox/interpret"
-	"glox/parse"
-	"glox/resolve"
-	"glox/scan"
+	"github.com/chidiwilliams/glox/ast"
+	"github.com/chidiwilliams/glox/interpret"
+	"github.com/chidiwilliams/glox/parse"
+	"github.com/chidiwilliams/glox/resolve"
+	"github.com/chidiwilliams/glox/scan"
 )
 
 var (
