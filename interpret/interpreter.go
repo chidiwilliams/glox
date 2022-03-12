@@ -50,7 +50,7 @@ func (in *Interpreter) Interpret(stmts []ast.Stmt) (result interface{}, hadRunti
 	defer func() {
 		if err := recover(); err != nil {
 			if e, ok := err.(runtimeError); ok {
-				_, _ = in.stdErr.Write([]byte(e.Error()))
+				_, _ = in.stdErr.Write([]byte(e.Error() + "\n"))
 				hadRuntimeError = true
 			} else {
 				fmt.Printf("Error: %s\n", err)
@@ -104,7 +104,7 @@ func (in *Interpreter) VisitClassStmt(stmt ast.ClassStmt) interface{} {
 		in.environment.define("super", superclass)
 	}
 
-	methods := make(map[string]function)
+	methods := make(map[string]function, len(stmt.Methods))
 	for _, method := range stmt.Methods {
 		fn := function{
 			declaration:   method,
@@ -252,9 +252,9 @@ func (in *Interpreter) VisitAssignExpr(expr ast.AssignExpr) interface{} {
 func (in *Interpreter) VisitCallExpr(expr ast.CallExpr) interface{} {
 	callee := in.evaluate(expr.Callee)
 
-	args := make([]interface{}, 0)
-	for _, arg := range expr.Arguments {
-		args = append(args, in.evaluate(arg))
+	args := make([]interface{}, len(expr.Arguments))
+	for i, arg := range expr.Arguments {
+		args[i] = in.evaluate(arg)
 	}
 
 	fn, ok := (callee).(callable)
@@ -318,40 +318,26 @@ func (in *Interpreter) VisitBinaryExpr(expr ast.BinaryExpr) interface{} {
 		}
 		in.error(expr.Operator, "Operands must be two numbers or two strings")
 	case ast.TokenMinus:
-		if err := in.checkNumberOperands(expr.Operator, left, right); err != nil {
-			panic(err)
-		}
+		in.checkNumberOperands(expr.Operator, left, right)
 		return left.(float64) - right.(float64)
 	case ast.TokenSlash:
-		if err := in.checkNumberOperands(expr.Operator, left, right); err != nil {
-			panic(err)
-		}
+		in.checkNumberOperands(expr.Operator, left, right)
 		return left.(float64) / right.(float64)
 	case ast.TokenStar:
-		if err := in.checkNumberOperands(expr.Operator, left, right); err != nil {
-			panic(err)
-		}
+		in.checkNumberOperands(expr.Operator, left, right)
 		return left.(float64) * right.(float64)
 	// comparison
 	case ast.TokenGreater:
-		if err := in.checkNumberOperands(expr.Operator, left, right); err != nil {
-			panic(err)
-		}
+		in.checkNumberOperands(expr.Operator, left, right)
 		return left.(float64) > right.(float64)
 	case ast.TokenGreaterEqual:
-		if err := in.checkNumberOperands(expr.Operator, left, right); err != nil {
-			panic(err)
-		}
+		in.checkNumberOperands(expr.Operator, left, right)
 		return left.(float64) >= right.(float64)
 	case ast.TokenLess:
-		if err := in.checkNumberOperands(expr.Operator, left, right); err != nil {
-			panic(err)
-		}
+		in.checkNumberOperands(expr.Operator, left, right)
 		return left.(float64) < right.(float64)
 	case ast.TokenLessEqual:
-		if err := in.checkNumberOperands(expr.Operator, left, right); err != nil {
-			panic(err)
-		}
+		in.checkNumberOperands(expr.Operator, left, right)
 		return left.(float64) <= right.(float64)
 	case ast.TokenEqualEqual:
 		return left == right
@@ -420,9 +406,7 @@ func (in *Interpreter) VisitUnaryExpr(expr ast.UnaryExpr) interface{} {
 	case ast.TokenBang:
 		return !in.isTruthy(right)
 	case ast.TokenMinus:
-		if err := in.checkNumberOperand(expr.Operator, right); err != nil {
-			panic(err)
-		}
+		in.checkNumberOperand(expr.Operator, right)
 		return -right.(float64)
 	}
 	return nil
@@ -459,20 +443,20 @@ func (in *Interpreter) isTruthy(val interface{}) bool {
 	return true
 }
 
-func (in *Interpreter) checkNumberOperand(operator ast.Token, operand interface{}) error {
+func (in *Interpreter) checkNumberOperand(operator ast.Token, operand interface{}) {
 	if _, ok := operand.(float64); ok {
-		return nil
+		return
 	}
-	return runtimeError{operator, "Operand must be a number"}
+	panic(runtimeError{operator, "Operand must be a number"})
 }
 
-func (in *Interpreter) checkNumberOperands(operator ast.Token, left interface{}, right interface{}) error {
+func (in *Interpreter) checkNumberOperands(operator ast.Token, left interface{}, right interface{}) {
 	if _, ok := left.(float64); ok {
 		if _, ok = right.(float64); ok {
-			return nil
+			return
 		}
 	}
-	return runtimeError{operator, "Operands must be number"}
+	panic(runtimeError{operator, "Operands must be number"})
 }
 
 func (in *Interpreter) stringify(value interface{}) string {

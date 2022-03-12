@@ -243,7 +243,6 @@ func (r *Resolver) VisitSuperExpr(expr ast.SuperExpr) interface{} {
 func (r *Resolver) VisitThisExpr(expr ast.ThisExpr) interface{} {
 	if r.currentClass == classTypeNone {
 		r.error(expr.Keyword, "Can't use 'this' outside of a class.")
-		return nil
 	}
 
 	r.resolveLocal(expr, expr.Keyword)

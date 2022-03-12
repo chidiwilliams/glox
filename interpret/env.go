@@ -23,7 +23,7 @@ func (e *environment) Get(in *Interpreter, name ast.Token) (interface{}, error) 
 		return val, nil
 	}
 	if e.enclosing != nil {
-		return e.enclosing.Get(nil, name)
+		return e.enclosing.Get(in, name)
 	}
 	return nil, runtimeError{name, fmt.Sprintf("Undefined variable '%s'", name.Lexeme)}
 }

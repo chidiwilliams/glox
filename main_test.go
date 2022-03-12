@@ -15,9 +15,11 @@ func Test_Run(t *testing.T) {
 	}{
 		// atoms
 		{"string", "print \"hello world\";", "hello world\n", ""},
+		{"multi-line string", "print \"hello\nworld\";", "hello\nworld\n", ""},
 		{"number", "print 342.32461932591235;", "342.32461932591235\n", ""},
 		{"string as boolean", "print \"\" and 34;", "34\n", ""},
 		{"nil as boolean", "print nil and 34;", "nil\n", ""},
+		{"line ending without semi-colon", "print", "", "[line 0] Error at end: Expect expression.\n"},
 
 		// comments
 		{"single-line comment after source", "print 1 + 1; // hello", "2\n", ""},
@@ -143,7 +145,7 @@ counter();`, "1\n2\n", ""},
 		{"calling function with wrong arity", `fun sayHello(a, b) {
 		print a + b;
 }
-sayHello("only first");`, "", "Expected 2 arguments but got 1.\n[line 3]"},
+sayHello("only first");`, "", "Expected 2 arguments but got 1.\n[line 3]\n"},
 
 		// Variable scoping
 		{"scoping", `var a = "global";

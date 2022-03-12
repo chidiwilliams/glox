@@ -124,7 +124,7 @@ func (s *Scanner) scanToken() {
 		} else if s.isAlpha(char) {
 			s.identifier()
 		} else {
-			s.error(s.line, "Unexpected character.")
+			s.error("Unexpected character.")
 		}
 	}
 }
@@ -176,7 +176,7 @@ func (s *Scanner) string() {
 	}
 
 	if s.isAtEnd() {
-		s.error(s.line, "Unterminated string.")
+		s.error("Unterminated string.")
 		return
 	}
 
@@ -263,6 +263,6 @@ func (s *Scanner) isAlphaNumeric(char rune) bool {
 	return s.isAlpha(char) || s.isDigit(char)
 }
 
-func (s *Scanner) error(line int, message string) {
-	_, _ = s.stdErr.Write([]byte(fmt.Sprintf("[line %d] Error%s: %s\n", line, "", message)))
+func (s *Scanner) error(message string) {
+	_, _ = s.stdErr.Write([]byte(fmt.Sprintf("[line %d] Error: %s\n", s.line, message)))
 }

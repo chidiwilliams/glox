@@ -201,7 +201,7 @@ func (p *Parser) forStatement() ast.Stmt {
 		condition = p.expression()
 
 	}
-	p.consume(ast.TokenSemicolon, "Expect ';' after look condition.")
+	p.consume(ast.TokenSemicolon, "Expect ';' after loop condition.")
 
 	var increment ast.Expr
 	if !p.check(ast.TokenRightParen) {
@@ -287,6 +287,7 @@ func (p *Parser) expressionStatement() ast.Stmt {
 func (p *Parser) function(kind string) ast.FunctionStmt {
 	name := p.consume(ast.TokenIdentifier, "Expect "+kind+" name.")
 
+	// Nil parameters used to check if the method is a getter. Should it use a field of its own?
 	var parameters []ast.Token
 
 	if kind != "method" || p.check(ast.TokenLeftParen) {
@@ -306,7 +307,7 @@ func (p *Parser) function(kind string) ast.FunctionStmt {
 			}
 		}
 
-		p.consume(ast.TokenRightParen, "Expect ')' after parameters")
+		p.consume(ast.TokenRightParen, "Expect ')' after parameters.")
 	}
 
 	p.consume(ast.TokenLeftBrace, "Expect '{' before "+kind+" body.")
@@ -554,8 +555,15 @@ func (p *Parser) consume(tokenType ast.TokenType, message string) ast.Token {
 }
 
 func (p *Parser) error(token ast.Token, message string) {
-	err := tokenError(token, message)
-	_, _ = p.stdErr.Write([]byte(err.(parseError).msg))
+	var where string
+	if token.TokenType == ast.TokenEof {
+		where = " at end"
+	} else {
+		where = " at '" + token.Lexeme + "'"
+	}
+
+	err := parseError{msg: fmt.Sprintf("[line %d] Error%s: %s\n", token.Line, where, message)}
+	_, _ = p.stdErr.Write([]byte(err.Error()))
 	panic(err)
 }
 
@@ -613,15 +621,4 @@ func (p *Parser) peek() ast.Token {
 
 func (p *Parser) previous() ast.Token {
 	return p.tokens[p.current-1]
-}
-
-func tokenError(token ast.Token, message string) error {
-	var where string
-	if token.TokenType == ast.TokenEof {
-		where = " at end"
-	} else {
-		where = " at '" + token.Lexeme + "'"
-	}
-
-	return parseError{msg: fmt.Sprintf("[line %d] Error%s: %s\n", token.Line, where, message)}
 }
