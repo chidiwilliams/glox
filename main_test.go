@@ -175,6 +175,20 @@ sayHello("only first");`, "", "Expected 2 arguments but got 1.\n[line 3]\n"},
 }
 Bacon().eat();
 `, "Crunch crunch\n", ""},
+		{"call and assign", `class Person {
+	init(age) {
+		this.age = age;
+  }
+
+	getAge() {
+		return this.age;
+	}
+}
+
+var person = Person(0);
+var sum = 0;
+sum = sum + person.getAge();
+print sum;`, "0\n", ""},
 		{"this", `class Cake {
 	taste() {
 		var adjective = "delicious";
