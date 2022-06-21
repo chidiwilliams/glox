@@ -27,8 +27,10 @@ type Interpreter struct {
 	stdOut io.Writer
 	// standard error
 	stdErr io.Writer
-	// pointer, else compares same pointer
-	locals map[ast.Expr]int
+	// map of "stringified" expression to depth where to find the local.
+	// we cannot use the ast.Expr as the key directly, because CallExpr
+	// is an unhashable type (it has a field that is a slice).
+	locals map[string]int
 }
 
 // NewInterpreter sets up a new interpreter with its environment and config
@@ -41,7 +43,7 @@ func NewInterpreter(stdOut io.Writer, stdErr io.Writer) *Interpreter {
 		environment: &globals,
 		stdOut:      stdOut,
 		stdErr:      stdErr,
-		locals:      make(map[ast.Expr]int),
+		locals:      make(map[string]int),
 	}
 }
 
@@ -75,7 +77,7 @@ func (in *Interpreter) execute(stmt ast.Stmt) interface{} {
 
 // Resolve sets the depth of a local variable access
 func (in *Interpreter) Resolve(expr ast.Expr, depth int) {
-	in.locals[expr] = depth
+	in.locals[in.asString(expr)] = depth
 }
 
 func (in *Interpreter) evaluate(expr ast.Expr) interface{} {
@@ -237,7 +239,7 @@ func (in *Interpreter) VisitReturnStmt(stmt ast.ReturnStmt) interface{} {
 func (in *Interpreter) VisitAssignExpr(expr ast.AssignExpr) interface{} {
 	value := in.evaluate(expr.Value)
 
-	distance, ok := in.locals[expr]
+	distance, ok := in.locals[in.asString(expr)]
 	if ok {
 		in.environment.assignAt(distance, expr.Name, value)
 	} else {
@@ -294,7 +296,7 @@ func (in *Interpreter) VisitVariableExpr(expr ast.VariableExpr) interface{} {
 // lookupVariable returns the value of a variable
 func (in *Interpreter) lookupVariable(name ast.Token, expr ast.Expr) (interface{}, error) {
 	// If the variable is a local variable, find it in the resolved enclosing scope
-	if distance, ok := in.locals[expr]; ok {
+	if distance, ok := in.locals[in.asString(expr)]; ok {
 		return in.environment.getAt(distance, name.Lexeme), nil
 	}
 	return in.globals.Get(nil, name)
@@ -382,7 +384,7 @@ func (in *Interpreter) VisitSetExpr(expr ast.SetExpr) interface{} {
 }
 
 func (in *Interpreter) VisitSuperExpr(expr ast.SuperExpr) interface{} {
-	distance := in.locals[expr]
+	distance := in.locals[in.asString(expr)]
 	superclass := in.environment.getAt(distance, "super").(*Class)
 	object := in.environment.getAt(distance-1, "this").(*instance)
 	method, ok := superclass.findMethod(expr.Method.Lexeme)
@@ -464,4 +466,8 @@ func (in *Interpreter) stringify(value interface{}) string {
 		return "nil"
 	}
 	return fmt.Sprint(value)
+}
+
+func (in *Interpreter) asString(expr ast.Expr) string {
+	return fmt.Sprintf("%#v", expr)
 }

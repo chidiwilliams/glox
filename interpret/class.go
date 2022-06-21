@@ -51,6 +51,10 @@ func (c Class) findMethod(name string) (function, bool) {
 	return function{}, false
 }
 
+func (c Class) String() string {
+	return c.name
+}
+
 type Instance interface {
 	Get(in *Interpreter, name ast.Token) (interface{}, error)
 }
