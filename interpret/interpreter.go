@@ -20,9 +20,9 @@ func (r runtimeError) Error() string {
 // environment for a program to be executed
 type Interpreter struct {
 	// current execution environment
-	environment *environment
+	environment *Environment
 	// global variables
-	globals environment
+	globals Environment
 	// standard output
 	stdOut io.Writer
 	// standard error
@@ -35,8 +35,8 @@ type Interpreter struct {
 
 // NewInterpreter sets up a new interpreter with its environment and config
 func NewInterpreter(stdOut io.Writer, stdErr io.Writer) *Interpreter {
-	globals := environment{}
-	globals.define("clock", clock{})
+	globals := Environment{}
+	globals.Define("clock", clock{})
 
 	return &Interpreter{
 		globals:     globals,
@@ -85,7 +85,7 @@ func (in *Interpreter) evaluate(expr ast.Expr) interface{} {
 }
 
 func (in *Interpreter) VisitBlockStmt(stmt ast.BlockStmt) interface{} {
-	in.executeBlock(stmt.Statements, environment{enclosing: in.environment})
+	in.executeBlock(stmt.Statements, Environment{enclosing: in.environment})
 	return nil
 }
 
@@ -99,11 +99,11 @@ func (in *Interpreter) VisitClassStmt(stmt ast.ClassStmt) interface{} {
 		superclass = &superclassValue
 	}
 
-	in.environment.define(stmt.Name.Lexeme, nil)
+	in.environment.Define(stmt.Name.Lexeme, nil)
 
 	if superclass != nil {
-		in.environment = &environment{enclosing: in.environment}
-		in.environment.define("super", superclass)
+		in.environment = &Environment{enclosing: in.environment}
+		in.environment.Define("super", superclass)
 	}
 
 	methods := make(map[string]function, len(stmt.Methods))
@@ -135,7 +135,7 @@ func (in *Interpreter) VisitVarStmt(stmt ast.VarStmt) interface{} {
 	if stmt.Initializer != nil {
 		val = in.evaluate(stmt.Initializer)
 	}
-	in.environment.define(stmt.Name.Lexeme, val)
+	in.environment.Define(stmt.Name.Lexeme, val)
 	return nil
 }
 
@@ -212,7 +212,7 @@ func (in *Interpreter) VisitExpressionStmt(stmt ast.ExpressionStmt) interface{} 
 // the current environment and defines the function in the current environment
 func (in *Interpreter) VisitFunctionStmt(stmt ast.FunctionStmt) interface{} {
 	fn := function{declaration: stmt, closure: in.environment}
-	in.environment.define(stmt.Name.Lexeme, fn)
+	in.environment.Define(stmt.Name.Lexeme, fn)
 	return nil
 }
 
@@ -299,7 +299,7 @@ func (in *Interpreter) lookupVariable(name ast.Token, expr ast.Expr) (interface{
 	if distance, ok := in.locals[in.asString(expr)]; ok {
 		return in.environment.getAt(distance, name.Lexeme), nil
 	}
-	return in.globals.Get(nil, name)
+	return in.globals.Get(name)
 }
 
 func (in *Interpreter) VisitBinaryExpr(expr ast.BinaryExpr) interface{} {
@@ -354,9 +354,9 @@ func (in *Interpreter) VisitBinaryExpr(expr ast.BinaryExpr) interface{} {
 // VisitFunctionExpr creates a new function from the function expression and the
 // current environment. The name of the function expression is defined within its block.
 func (in *Interpreter) VisitFunctionExpr(expr ast.FunctionExpr) interface{} {
-	fn := functionExpr{declaration: expr, closure: &environment{enclosing: in.environment}}
+	fn := functionExpr{declaration: expr, closure: &Environment{enclosing: in.environment}}
 	if expr.Name != nil {
-		fn.closure.define(expr.Name.Lexeme, fn)
+		fn.closure.Define(expr.Name.Lexeme, fn)
 	}
 
 	return fn
@@ -422,7 +422,7 @@ func (in *Interpreter) VisitTernaryExpr(expr ast.TernaryExpr) interface{} {
 	return in.evaluate(expr.Right)
 }
 
-func (in *Interpreter) executeBlock(statements []ast.Stmt, env environment) {
+func (in *Interpreter) executeBlock(statements []ast.Stmt, env Environment) {
 	// Restore the current environment after executing the block
 	previous := in.environment
 	defer func() {

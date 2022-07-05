@@ -5,8 +5,9 @@ type Expr interface {
 }
 
 type AssignExpr struct {
-	Name  Token
-	Value Expr
+	Name     Token
+	Value    Expr
+	TypeDecl string
 }
 
 func (b AssignExpr) Accept(visitor ExprVisitor) interface{} {

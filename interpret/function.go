@@ -9,7 +9,7 @@ type callable interface {
 
 type function struct {
 	declaration   ast.FunctionStmt
-	closure       *environment
+	closure       *Environment
 	isInitializer bool
 	isGetter      bool
 }
@@ -33,9 +33,9 @@ func (f function) call(interpreter *Interpreter, args []interface{}) (returnVal 
 		}
 	}()
 
-	env := environment{enclosing: f.closure}
+	env := Environment{enclosing: f.closure}
 	for i, v := range f.declaration.Params {
-		env.define(v.Lexeme, args[i])
+		env.Define(v.Lexeme, args[i])
 	}
 	interpreter.executeBlock(f.declaration.Body, env)
 
@@ -47,8 +47,8 @@ func (f function) call(interpreter *Interpreter, args []interface{}) (returnVal 
 }
 
 func (f function) bind(i *instance) function {
-	env := environment{enclosing: f.closure}
-	env.define("this", i)
+	env := Environment{enclosing: f.closure}
+	env.Define("this", i)
 	return function{
 		declaration:   f.declaration,
 		closure:       &env,
@@ -58,7 +58,7 @@ func (f function) bind(i *instance) function {
 
 type functionExpr struct {
 	declaration ast.FunctionExpr
-	closure     *environment
+	closure     *Environment
 }
 
 func (f functionExpr) arity() int {
@@ -76,9 +76,9 @@ func (f functionExpr) call(in *Interpreter, args []interface{}) (returnVal inter
 		}
 	}()
 
-	env := environment{enclosing: f.closure}
+	env := Environment{enclosing: f.closure}
 	for i, v := range f.declaration.Params {
-		env.define(v.Lexeme, args[i])
+		env.Define(v.Lexeme, args[i])
 	}
 	in.executeBlock(f.declaration.Body, env)
 	return nil
