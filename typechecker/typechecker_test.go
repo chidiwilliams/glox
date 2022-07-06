@@ -2,9 +2,14 @@ package typechecker
 
 import (
 	"errors"
+	"os"
 	"testing"
 
 	"github.com/chidiwilliams/glox/ast"
+	"github.com/chidiwilliams/glox/interpret"
+	"github.com/chidiwilliams/glox/parse"
+	"github.com/chidiwilliams/glox/resolve"
+	"github.com/chidiwilliams/glox/scan"
 )
 
 func TestTypeChecker_check(t *testing.T) {
@@ -67,7 +72,7 @@ func TestTypeChecker_check(t *testing.T) {
 		},
 	}
 
-	c := NewTypeChecker()
+	c := NewTypeChecker(nil)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			exprType, err := c.Check(tt.args.expr)
@@ -85,4 +90,86 @@ func TestTypeChecker_check(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTypeChecker_CheckStmt(t *testing.T) {
+	type args struct {
+		stmt   ast.Stmt
+		source string
+	}
+	tests := []struct {
+		name string
+		args args
+		err  error
+	}{
+		{
+			"",
+			args{
+				source: `
+{
+	var x = 10;
+	var y = 20;
+	var z: string = x * 10 + y;
+	z;
+}`,
+			},
+			errors.New("expected '1' type for {{{21 x %!s(<nil>)} 10 * %!s(<nil>) {%!s(float64=10)}} 7 + %!s(<nil>) {21 y %!s(<nil>)}} in {{{21 x %!s(<nil>)} 10 * %!s(<nil>) {%!s(float64=10)}} 7 + %!s(<nil>) {21 y %!s(<nil>)}}, but got 0"),
+		},
+		{
+			"",
+			args{
+				source: `
+{
+	var x = 10;
+	{
+		var x: string = "";
+		x + "hello";
+	}
+	x - 20;
+}`,
+			},
+			nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			statements, interpreter := runSource(t, tt.args.source)
+
+			c := NewTypeChecker(interpreter)
+			err := c.CheckStmts(statements)
+			if err != nil {
+				if tt.err == nil {
+					t.Errorf("Check() error = %v, want %v", err, tt.err)
+				} else {
+					if err.Error() != tt.err.Error() {
+						t.Errorf("Check() error = %v, want %v", err, tt.err)
+					}
+				}
+			}
+		})
+	}
+}
+
+func runSource(t *testing.T, source string) ([]ast.Stmt, *interpret.Interpreter) {
+	scanner := scan.NewScanner(source, os.Stderr)
+	tokens := scanner.ScanTokens()
+
+	parser := parse.NewParser(tokens, os.Stderr)
+	var statements []ast.Stmt
+	statements, hadError := parser.Parse()
+	if hadError {
+		t.Fatal("parsing error")
+	}
+
+	interpreter := interpret.NewInterpreter(os.Stdout, os.Stderr)
+
+	resolver := resolve.NewResolver(interpreter, os.Stderr)
+	hadError = resolver.ResolveStmts(statements)
+
+	if hadError {
+		t.Fatal("resolving error")
+	}
+
+	return statements, interpreter
 }

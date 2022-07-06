@@ -39,7 +39,8 @@ Parser grammar:
 	funDecl      => "fun" function
 	function     => IDENTIFIER "(" parameters? ")" block
 	parameters   => IDENTIFIER ( "," IDENTIFIER )*
-	varDecl      => "var" IDENTIFIER ( "=" expression )? ";"
+	varDecl      => "var" IDENTIFIER ( ":" type )? ( "=" expression )? ";"
+	type         => "number" | "string"
 	statement    => exprStmt | ifStmt | forStmt | printStmt | returnStmt | whileStmt
 									| breakStmt | continueStmt | block
 	exprStmt     => expression ";"
@@ -133,12 +134,24 @@ func (p *Parser) classDeclaration() ast.Stmt {
 
 func (p *Parser) varDeclaration() ast.Stmt {
 	name := p.consume(ast.TokenIdentifier, "Expect variable name")
+	var typeDecl string
+	if p.match(ast.TokenColon) {
+		typeDecl = p.typeDeclaration()
+	}
 	var initializer ast.Expr
 	if p.match(ast.TokenEqual) {
 		initializer = p.expression()
 	}
 	p.consume(ast.TokenSemicolon, "Expect ';' after variable declaration")
-	return ast.VarStmt{Name: name, Initializer: initializer}
+	return ast.VarStmt{Name: name, Initializer: initializer, TypeDecl: typeDecl}
+}
+
+func (p *Parser) typeDeclaration() string {
+	if p.match(ast.TokenIdentifier) {
+		return p.previous().Lexeme
+	}
+	p.error(p.previous(), "Expect type tag to be a string.")
+	return ""
 }
 
 // statement parses statements. A statement can be a print,

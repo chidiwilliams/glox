@@ -23,11 +23,93 @@ const (
 )
 
 type TypeChecker struct {
-	env *interpret.Environment
+	globals     interpret.Environment
+	env         *interpret.Environment
+	interpreter *interpret.Interpreter
 }
 
-func NewTypeChecker() *TypeChecker {
-	return &TypeChecker{env: &interpret.Environment{}}
+func (c *TypeChecker) VisitBlockStmt(stmt ast.BlockStmt) interface{} {
+	c.executeBlock(stmt.Statements, interpret.Environment{Enclosing: c.env})
+	return nil
+}
+
+func (c *TypeChecker) executeBlock(stmts []ast.Stmt, env interpret.Environment) {
+	// Restore the current environment after executing the block
+	previous := c.env
+	defer func() {
+		c.env = previous
+	}()
+
+	c.env = &env
+	for _, stmt := range stmts {
+		c.checkStmt(stmt)
+	}
+}
+
+func (c *TypeChecker) VisitClassStmt(stmt ast.ClassStmt) interface{} {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (c *TypeChecker) VisitExpressionStmt(stmt ast.ExpressionStmt) interface{} {
+	c.check(stmt.Expr)
+	return nil
+}
+
+func (c *TypeChecker) VisitFunctionStmt(stmt ast.FunctionStmt) interface{} {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (c *TypeChecker) VisitIfStmt(stmt ast.IfStmt) interface{} {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (c *TypeChecker) VisitPrintStmt(stmt ast.PrintStmt) interface{} {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (c *TypeChecker) VisitReturnStmt(stmt ast.ReturnStmt) interface{} {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (c *TypeChecker) VisitWhileStmt(stmt ast.WhileStmt) interface{} {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (c *TypeChecker) VisitContinueStmt(stmt ast.ContinueStmt) interface{} {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (c *TypeChecker) VisitBreakStmt(stmt ast.BreakStmt) interface{} {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (c *TypeChecker) VisitVarStmt(stmt ast.VarStmt) interface{} {
+	if stmt.Initializer != nil {
+		// Infer actual tag
+		valueType := c.check(stmt.Initializer)
+
+		// With type check
+		if stmt.TypeDecl != "" {
+			expectedType := c.typeFromString(stmt.TypeDecl)
+			c.expect(valueType, expectedType, stmt.Initializer, stmt.Initializer)
+		}
+
+		c.env.Define(stmt.Name.Lexeme, valueType)
+	}
+	return nil
+}
+
+func NewTypeChecker(interpreter *interpret.Interpreter) *TypeChecker {
+	globals := interpret.Environment{}
+	return &TypeChecker{env: &globals, globals: globals, interpreter: interpreter}
 }
 
 func (c *TypeChecker) Check(expr ast.Expr) (exprType Type, err error) {
@@ -49,18 +131,46 @@ func (c *TypeChecker) check(expr ast.Expr) Type {
 	return expr.Accept(c).(Type)
 }
 
-func (c *TypeChecker) VisitAssignExpr(expr ast.AssignExpr) interface{} {
-	// Infer actual tag
-	valueType := c.check(expr.Value)
+func (c *TypeChecker) CheckStmts(stmts []ast.Stmt) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			if typeErr, ok := recovered.(TypeError); ok {
+				err = typeErr
+			} else {
+				panic(recovered)
+			}
+		}
+	}()
 
-	// With type check
-	if expr.TypeDecl != "" {
-		expectedType := c.typeFromString(expr.TypeDecl)
-		c.expect(valueType, expectedType, expr.Value, expr)
+	for _, stmt := range stmts {
+		c.checkStmt(stmt)
 	}
 
-	c.env.Define(expr.Name.Lexeme, valueType)
-	return valueType
+	return nil
+}
+
+func (c *TypeChecker) CheckStmt(stmt ast.Stmt) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			if typeErr, ok := recovered.(TypeError); ok {
+				err = typeErr
+			} else {
+				panic(recovered)
+			}
+		}
+	}()
+
+	c.checkStmt(stmt)
+	return nil
+}
+
+func (c *TypeChecker) checkStmt(stmt ast.Stmt) {
+	stmt.Accept(c)
+}
+
+func (c *TypeChecker) VisitAssignExpr(expr ast.AssignExpr) interface{} {
+	// TODO implement me
+	panic("implement me")
 }
 
 func (c *TypeChecker) VisitBinaryExpr(expr ast.BinaryExpr) interface{} {
@@ -91,8 +201,7 @@ func (c *TypeChecker) VisitGetExpr(expr ast.GetExpr) interface{} {
 }
 
 func (c *TypeChecker) VisitGroupingExpr(expr ast.GroupingExpr) interface{} {
-	// TODO implement me
-	panic("implement me")
+	return c.check(expr.Expression)
 }
 
 func (c *TypeChecker) VisitLiteralExpr(expr ast.LiteralExpr) interface{} {
@@ -136,11 +245,19 @@ func (c *TypeChecker) VisitUnaryExpr(expr ast.UnaryExpr) interface{} {
 }
 
 func (c *TypeChecker) VisitVariableExpr(expr ast.VariableExpr) interface{} {
-	exprType, err := c.env.Get(expr.Name)
+	exprType, err := c.lookupType(expr.Name, expr)
 	if err != nil {
 		panic(TypeError{message: err.Error()})
 	}
 	return exprType
+}
+
+func (c *TypeChecker) lookupType(name ast.Token, expr ast.Expr) (interface{}, error) {
+	// If the variable is a local variable, find it in the resolved enclosing scope
+	if distance, ok := c.interpreter.GetLocalDistance(expr); ok {
+		return c.env.GetAt(distance, name.Lexeme), nil
+	}
+	return c.globals.Get(name)
 }
 
 func (c *TypeChecker) typeFromString(str string) Type {

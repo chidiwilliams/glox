@@ -10,7 +10,7 @@ import (
 
 func main() {
 	writeAst("Expr", []string{
-		"Assign   : Name Token, Value Expr, TypeDecl string",
+		"Assign   : Name Token, Value Expr",
 		"Binary   : Left Expr, Operator Token, Right Expr",
 		"Call     : Callee Expr, Paren Token, Arguments []Expr",
 		"Function : Name *Token, Params []Token, Body []Stmt",
@@ -37,7 +37,7 @@ func main() {
 		"While      : Condition Expr, Body Stmt",
 		"Continue   : ",
 		"Break      : ",
-		"Var        : Name Token, Initializer Expr",
+		"Var        : Name Token, Initializer Expr, TypeDecl string",
 	})
 }
 

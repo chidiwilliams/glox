@@ -23,7 +23,7 @@ func (f function) call(interpreter *Interpreter, args []interface{}) (returnVal 
 		if err := recover(); err != nil {
 			if v, ok := err.(Return); ok {
 				if f.isInitializer {
-					returnVal = f.closure.getAt(0, "this")
+					returnVal = f.closure.GetAt(0, "this")
 					return
 				}
 				returnVal = v.Value
@@ -33,21 +33,21 @@ func (f function) call(interpreter *Interpreter, args []interface{}) (returnVal 
 		}
 	}()
 
-	env := Environment{enclosing: f.closure}
+	env := Environment{Enclosing: f.closure}
 	for i, v := range f.declaration.Params {
 		env.Define(v.Lexeme, args[i])
 	}
 	interpreter.executeBlock(f.declaration.Body, env)
 
 	if f.isInitializer {
-		return f.closure.getAt(0, "this")
+		return f.closure.GetAt(0, "this")
 	}
 
 	return nil
 }
 
 func (f function) bind(i *instance) function {
-	env := Environment{enclosing: f.closure}
+	env := Environment{Enclosing: f.closure}
 	env.Define("this", i)
 	return function{
 		declaration:   f.declaration,
@@ -76,7 +76,7 @@ func (f functionExpr) call(in *Interpreter, args []interface{}) (returnVal inter
 		}
 	}()
 
-	env := Environment{enclosing: f.closure}
+	env := Environment{Enclosing: f.closure}
 	for i, v := range f.declaration.Params {
 		env.Define(v.Lexeme, args[i])
 	}

@@ -7,7 +7,7 @@ import (
 )
 
 type Environment struct {
-	enclosing *Environment
+	Enclosing *Environment
 	values    map[string]interface{}
 }
 
@@ -22,8 +22,8 @@ func (e *Environment) Get(name ast.Token) (interface{}, error) {
 	if val, ok := e.values[name.Lexeme]; ok {
 		return val, nil
 	}
-	if e.enclosing != nil {
-		return e.enclosing.Get(name)
+	if e.Enclosing != nil {
+		return e.Enclosing.Get(name)
 	}
 	return nil, runtimeError{name, fmt.Sprintf("Undefined variable '%s'", name.Lexeme)}
 }
@@ -33,13 +33,13 @@ func (e *Environment) assign(name ast.Token, value interface{}) error {
 		e.Define(name.Lexeme, value)
 		return nil
 	}
-	if e.enclosing != nil {
-		return e.enclosing.assign(name, value)
+	if e.Enclosing != nil {
+		return e.Enclosing.assign(name, value)
 	}
 	return runtimeError{name, fmt.Sprintf("Undefined variable '%s'", name.Lexeme)}
 }
 
-func (e *Environment) getAt(distance int, name string) interface{} {
+func (e *Environment) GetAt(distance int, name string) interface{} {
 	return e.ancestor(distance).values[name]
 }
 
@@ -50,7 +50,7 @@ func (e *Environment) assignAt(distance int, name ast.Token, value interface{}) 
 func (e *Environment) ancestor(distance int) *Environment {
 	env := e
 	for i := 0; i < distance; i++ {
-		env = env.enclosing
+		env = env.Enclosing
 	}
 	return env
 }

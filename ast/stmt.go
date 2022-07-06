@@ -93,6 +93,7 @@ func (b BreakStmt) Accept(visitor StmtVisitor) interface{} {
 type VarStmt struct {
 	Name        Token
 	Initializer Expr
+	TypeDecl    string
 }
 
 func (b VarStmt) Accept(visitor StmtVisitor) interface{} {

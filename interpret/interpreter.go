@@ -80,12 +80,18 @@ func (in *Interpreter) Resolve(expr ast.Expr, depth int) {
 	in.locals[in.asString(expr)] = depth
 }
 
+// GetLocalDistance returns the depth of a resolved local variable access
+func (in *Interpreter) GetLocalDistance(expr ast.Expr) (int, bool) {
+	distance, ok := in.locals[in.asString(expr)]
+	return distance, ok
+}
+
 func (in *Interpreter) evaluate(expr ast.Expr) interface{} {
 	return expr.Accept(in)
 }
 
 func (in *Interpreter) VisitBlockStmt(stmt ast.BlockStmt) interface{} {
-	in.executeBlock(stmt.Statements, Environment{enclosing: in.environment})
+	in.executeBlock(stmt.Statements, Environment{Enclosing: in.environment})
 	return nil
 }
 
@@ -102,7 +108,7 @@ func (in *Interpreter) VisitClassStmt(stmt ast.ClassStmt) interface{} {
 	in.environment.Define(stmt.Name.Lexeme, nil)
 
 	if superclass != nil {
-		in.environment = &Environment{enclosing: in.environment}
+		in.environment = &Environment{Enclosing: in.environment}
 		in.environment.Define("super", superclass)
 	}
 
@@ -120,7 +126,7 @@ func (in *Interpreter) VisitClassStmt(stmt ast.ClassStmt) interface{} {
 	class := Class{name: stmt.Name.Lexeme, methods: methods, superclass: superclass}
 
 	if superclass != nil {
-		in.environment = in.environment.enclosing
+		in.environment = in.environment.Enclosing
 	}
 
 	err := in.environment.assign(stmt.Name, class)
@@ -239,7 +245,7 @@ func (in *Interpreter) VisitReturnStmt(stmt ast.ReturnStmt) interface{} {
 func (in *Interpreter) VisitAssignExpr(expr ast.AssignExpr) interface{} {
 	value := in.evaluate(expr.Value)
 
-	distance, ok := in.locals[in.asString(expr)]
+	distance, ok := in.GetLocalDistance(expr)
 	if ok {
 		in.environment.assignAt(distance, expr.Name, value)
 	} else {
@@ -296,8 +302,8 @@ func (in *Interpreter) VisitVariableExpr(expr ast.VariableExpr) interface{} {
 // lookupVariable returns the value of a variable
 func (in *Interpreter) lookupVariable(name ast.Token, expr ast.Expr) (interface{}, error) {
 	// If the variable is a local variable, find it in the resolved enclosing scope
-	if distance, ok := in.locals[in.asString(expr)]; ok {
-		return in.environment.getAt(distance, name.Lexeme), nil
+	if distance, ok := in.GetLocalDistance(expr); ok {
+		return in.environment.GetAt(distance, name.Lexeme), nil
 	}
 	return in.globals.Get(name)
 }
@@ -354,7 +360,7 @@ func (in *Interpreter) VisitBinaryExpr(expr ast.BinaryExpr) interface{} {
 // VisitFunctionExpr creates a new function from the function expression and the
 // current environment. The name of the function expression is defined within its block.
 func (in *Interpreter) VisitFunctionExpr(expr ast.FunctionExpr) interface{} {
-	fn := functionExpr{declaration: expr, closure: &Environment{enclosing: in.environment}}
+	fn := functionExpr{declaration: expr, closure: &Environment{Enclosing: in.environment}}
 	if expr.Name != nil {
 		fn.closure.Define(expr.Name.Lexeme, fn)
 	}
@@ -384,9 +390,9 @@ func (in *Interpreter) VisitSetExpr(expr ast.SetExpr) interface{} {
 }
 
 func (in *Interpreter) VisitSuperExpr(expr ast.SuperExpr) interface{} {
-	distance := in.locals[in.asString(expr)]
-	superclass := in.environment.getAt(distance, "super").(*Class)
-	object := in.environment.getAt(distance-1, "this").(*instance)
+	distance, _ := in.GetLocalDistance(expr)
+	superclass := in.environment.GetAt(distance, "super").(*Class)
+	object := in.environment.GetAt(distance-1, "this").(*instance)
 	method, ok := superclass.findMethod(expr.Method.Lexeme)
 	if !ok {
 		in.error(expr.Method, fmt.Sprintf("Undefined property '%s'.", expr.Method.Lexeme))
