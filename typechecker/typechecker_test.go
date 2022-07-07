@@ -130,7 +130,26 @@ func TestTypeChecker_CheckStmt(t *testing.T) {
 			},
 			nil,
 		},
+		{
+			"should type-check a variable re-assignment",
+			args{
+				source: `
+var x: number = 20;
+x = "hello";
+`,
+			},
+			errors.New("expected '0' type for {hello} in {21 x %!s(<nil>) {hello}}, but got 1"),
+		},
+		{
+			"boolean type",
+			args{
+				source: `
+var x: bool = 30 > 2;`,
+			},
+			nil,
+		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 

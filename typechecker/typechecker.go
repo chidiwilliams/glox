@@ -20,11 +20,12 @@ type Type uint8
 const (
 	TypeNumber Type = iota
 	TypeString
+	TypeBoolean
 )
 
 type TypeChecker struct {
-	globals     interpret.Environment
 	env         *interpret.Environment
+	globals     *interpret.Environment
 	interpreter *interpret.Interpreter
 }
 
@@ -109,7 +110,7 @@ func (c *TypeChecker) VisitVarStmt(stmt ast.VarStmt) interface{} {
 
 func NewTypeChecker(interpreter *interpret.Interpreter) *TypeChecker {
 	globals := interpret.Environment{}
-	return &TypeChecker{env: &globals, globals: globals, interpreter: interpreter}
+	return &TypeChecker{env: &globals, globals: &globals, interpreter: interpreter}
 }
 
 func (c *TypeChecker) Check(expr ast.Expr) (exprType Type, err error) {
@@ -169,11 +170,21 @@ func (c *TypeChecker) checkStmt(stmt ast.Stmt) {
 }
 
 func (c *TypeChecker) VisitAssignExpr(expr ast.AssignExpr) interface{} {
-	// TODO implement me
-	panic("implement me")
+	valueType := c.check(expr.Value)
+	varType, err := c.lookupType(expr.Name, expr)
+	if err != nil {
+		panic(TypeError{message: err.Error()})
+	}
+
+	c.expect(valueType, varType, expr.Value, expr)
+	return valueType
 }
 
 func (c *TypeChecker) VisitBinaryExpr(expr ast.BinaryExpr) interface{} {
+	if c.isBooleanBinary(expr.Operator) {
+		return c.checkBooleanBinaryExpr(expr)
+	}
+
 	leftType := c.check(expr.Left)
 	rightType := c.check(expr.Right)
 
@@ -210,6 +221,8 @@ func (c *TypeChecker) VisitLiteralExpr(expr ast.LiteralExpr) interface{} {
 		return TypeString
 	case float64:
 		return TypeNumber
+	case bool:
+		return TypeBoolean
 	}
 	panic(TypeError{message: "unable to determine expression type"})
 }
@@ -252,12 +265,16 @@ func (c *TypeChecker) VisitVariableExpr(expr ast.VariableExpr) interface{} {
 	return exprType
 }
 
-func (c *TypeChecker) lookupType(name ast.Token, expr ast.Expr) (interface{}, error) {
+func (c *TypeChecker) lookupType(name ast.Token, expr ast.Expr) (Type, error) {
 	// If the variable is a local variable, find it in the resolved enclosing scope
 	if distance, ok := c.interpreter.GetLocalDistance(expr); ok {
-		return c.env.GetAt(distance, name.Lexeme), nil
+		return c.env.GetAt(distance, name.Lexeme).(Type), nil
 	}
-	return c.globals.Get(name)
+	nameType, err := c.globals.Get(name)
+	if err != nil {
+		return 0, err
+	}
+	return nameType.(Type), nil
 }
 
 func (c *TypeChecker) typeFromString(str string) Type {
@@ -266,6 +283,8 @@ func (c *TypeChecker) typeFromString(str string) Type {
 		return TypeString
 	case "number":
 		return TypeNumber
+	case "bool":
+		return TypeBoolean
 	default:
 		panic(TypeError{message: "Unknown type for expression."})
 	}
@@ -298,4 +317,23 @@ func (c *TypeChecker) expectOperatorType(inputType Type, allowedTypes []Type, ex
 
 func (c *TypeChecker) error(message string) {
 	panic(TypeError{message: message})
+}
+
+func (c *TypeChecker) isBooleanBinary(operator ast.Token) bool {
+	switch operator.TokenType {
+	case ast.TokenBangEqual, ast.TokenEqualEqual,
+		ast.TokenGreater, ast.TokenGreaterEqual,
+		ast.TokenLess, ast.TokenLessEqual:
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *TypeChecker) checkBooleanBinaryExpr(expr ast.BinaryExpr) interface{} {
+	leftType := c.check(expr.Left)
+	rightType := c.check(expr.Right)
+
+	c.expect(rightType, leftType, expr.Right, expr)
+	return TypeBoolean
 }
