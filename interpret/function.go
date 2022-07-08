@@ -35,7 +35,7 @@ func (f function) call(interpreter *Interpreter, args []interface{}) (returnVal 
 
 	env := Environment{Enclosing: f.closure}
 	for i, v := range f.declaration.Params {
-		env.Define(v.Lexeme, args[i])
+		env.Define(v.Token.Lexeme, args[i])
 	}
 	interpreter.executeBlock(f.declaration.Body, env)
 
@@ -78,7 +78,7 @@ func (f functionExpr) call(in *Interpreter, args []interface{}) (returnVal inter
 
 	env := Environment{Enclosing: f.closure}
 	for i, v := range f.declaration.Params {
-		env.Define(v.Lexeme, args[i])
+		env.Define(v.Token.Lexeme, args[i])
 	}
 	in.executeBlock(f.declaration.Body, env)
 	return nil

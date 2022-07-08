@@ -15,13 +15,71 @@ func (e TypeError) Error() string {
 	return e.message
 }
 
-type Type uint8
+type Type interface {
+	String() string
+	Equals(t Type) bool
+}
 
-const (
-	TypeNumber Type = iota
-	TypeString
-	TypeBoolean
+type primitiveType struct {
+	name string
+}
+
+func newPrimitiveType(name string) Type {
+	return primitiveType{name: name}
+}
+
+func (s primitiveType) String() string {
+	return s.name
+}
+
+func (s primitiveType) Equals(t Type) bool {
+	return s == t
+}
+
+var (
+	TypeNumber  = newPrimitiveType("number")
+	TypeString  = newPrimitiveType("string")
+	TypeBoolean = newPrimitiveType("boolean")
+	TypeNil     = newPrimitiveType("nil")
 )
+
+func newFunctionType(name string, paramTypes []Type, returnType Type) Type {
+	return typeFunction{name: name, paramTypes: paramTypes, returnType: returnType}
+}
+
+type typeFunction struct {
+	name       string
+	paramTypes []Type
+	returnType Type
+}
+
+func (t typeFunction) Equals(t2 Type) bool {
+	return t.String() == t2.String()
+}
+
+func (t typeFunction) String() string {
+	if t.name != "" {
+		return t.name
+	}
+
+	name := "Fn<"
+
+	name += "["
+	for i, paramType := range t.paramTypes {
+		if i > 0 {
+			name += ","
+		}
+		name += paramType.String()
+	}
+	name += "], "
+	name += t.returnType.String()
+	name += ">"
+	return name
+}
+
+type Return struct {
+	Value Type
+}
 
 type TypeChecker struct {
 	env         *interpret.Environment
@@ -30,11 +88,11 @@ type TypeChecker struct {
 }
 
 func (c *TypeChecker) VisitBlockStmt(stmt ast.BlockStmt) interface{} {
-	c.executeBlock(stmt.Statements, interpret.Environment{Enclosing: c.env})
+	c.checkBlock(stmt.Statements, interpret.Environment{Enclosing: c.env})
 	return nil
 }
 
-func (c *TypeChecker) executeBlock(stmts []ast.Stmt, env interpret.Environment) {
+func (c *TypeChecker) checkBlock(stmts []ast.Stmt, env interpret.Environment) {
 	// Restore the current environment after executing the block
 	previous := c.env
 	defer func() {
@@ -58,13 +116,18 @@ func (c *TypeChecker) VisitExpressionStmt(stmt ast.ExpressionStmt) interface{} {
 }
 
 func (c *TypeChecker) VisitFunctionStmt(stmt ast.FunctionStmt) interface{} {
-	// TODO implement me
-	panic("implement me")
+	fnType := c.checkFunction(stmt.Params, stmt.Body, stmt.ReturnType)
+	c.env.Define(stmt.Name.Lexeme, fnType)
+	return nil
 }
 
 func (c *TypeChecker) VisitIfStmt(stmt ast.IfStmt) interface{} {
-	// TODO implement me
-	panic("implement me")
+	conditionType := c.check(stmt.Condition)
+	c.expect(conditionType, TypeBoolean, stmt.Condition, stmt.Condition)
+
+	c.checkStmt(stmt.ThenBranch)
+	c.checkStmt(stmt.ElseBranch)
+	return nil
 }
 
 func (c *TypeChecker) VisitPrintStmt(stmt ast.PrintStmt) interface{} {
@@ -73,13 +136,19 @@ func (c *TypeChecker) VisitPrintStmt(stmt ast.PrintStmt) interface{} {
 }
 
 func (c *TypeChecker) VisitReturnStmt(stmt ast.ReturnStmt) interface{} {
-	// TODO implement me
-	panic("implement me")
+	value := TypeNil
+	if stmt.Value != nil {
+		value = c.check(stmt.Value)
+	}
+
+	panic(Return{Value: value})
 }
 
 func (c *TypeChecker) VisitWhileStmt(stmt ast.WhileStmt) interface{} {
-	// TODO implement me
-	panic("implement me")
+	conditionType := c.check(stmt.Condition)
+	c.expect(conditionType, TypeBoolean, stmt.Condition, stmt.Condition)
+	c.checkStmt(stmt.Body)
+	return nil
 }
 
 func (c *TypeChecker) VisitContinueStmt(stmt ast.ContinueStmt) interface{} {
@@ -99,7 +168,7 @@ func (c *TypeChecker) VisitVarStmt(stmt ast.VarStmt) interface{} {
 
 		// With type check
 		if stmt.TypeDecl != "" {
-			expectedType := c.typeFromString(stmt.TypeDecl)
+			expectedType := c.typeFromParsed(stmt.TypeDecl)
 			c.expect(valueType, expectedType, stmt.Initializer, stmt.Initializer)
 		}
 
@@ -202,8 +271,40 @@ func (c *TypeChecker) VisitCallExpr(expr ast.CallExpr) interface{} {
 }
 
 func (c *TypeChecker) VisitFunctionExpr(expr ast.FunctionExpr) interface{} {
-	// TODO implement me
-	panic("implement me")
+	return c.checkFunction(expr.Params, expr.Body, expr.ReturnType)
+}
+
+func (c *TypeChecker) checkFunction(params []ast.Param, body []ast.Stmt, returnType ast.Type) typeFunction {
+	fnEnv := interpret.Environment{Enclosing: c.env}
+	paramTypes := make([]Type, len(params))
+
+	for i, param := range params {
+		paramType := c.typeFromParsed(param.Type)
+		fnEnv.Define(param.Token.Lexeme, paramType)
+		paramTypes[i] = paramType
+	}
+
+	actualReturnType := c.checkFunctionBody(body, fnEnv)
+	if returnType != nil && !actualReturnType.Equals(c.typeFromParsed(returnType)) {
+		panic(TypeError{message: fmt.Sprintf("expected function %s to return %s, but got %s", body, returnType, actualReturnType)})
+	}
+
+	return typeFunction{paramTypes: paramTypes, returnType: actualReturnType}
+}
+
+func (c *TypeChecker) checkFunctionBody(fnBody []ast.Stmt, fnEnv interpret.Environment) (returnType Type) {
+	defer func() {
+		if err := recover(); err != nil {
+			if v, ok := err.(Return); ok {
+				returnType = v.Value
+			} else {
+				panic(err)
+			}
+		}
+	}()
+
+	c.checkBlock(fnBody, fnEnv)
+	return TypeNil
 }
 
 func (c *TypeChecker) VisitGetExpr(expr ast.GetExpr) interface{} {
@@ -248,8 +349,14 @@ func (c *TypeChecker) VisitThisExpr(expr ast.ThisExpr) interface{} {
 }
 
 func (c *TypeChecker) VisitTernaryExpr(expr ast.TernaryExpr) interface{} {
-	// TODO implement me
-	panic("implement me")
+	conditionType := c.check(expr.Cond)
+	c.expect(conditionType, TypeBoolean, expr.Cond, expr)
+
+	consequentType := c.check(expr.Consequent)
+	alternateType := c.check(expr.Alternate)
+
+	c.expect(alternateType, consequentType, expr, expr)
+	return alternateType
 }
 
 func (c *TypeChecker) VisitUnaryExpr(expr ast.UnaryExpr) interface{} {
@@ -272,27 +379,45 @@ func (c *TypeChecker) lookupType(name ast.Token, expr ast.Expr) (Type, error) {
 	}
 	nameType, err := c.globals.Get(name)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	return nameType.(Type), nil
 }
 
-func (c *TypeChecker) typeFromString(str string) Type {
-	switch str {
-	case "string":
-		return TypeString
-	case "number":
-		return TypeNumber
-	case "bool":
-		return TypeBoolean
-	default:
-		panic(TypeError{message: "Unknown type for expression."})
+func (c *TypeChecker) typeFromParsed(parsedType ast.Type) Type {
+	switch parsed := parsedType.(type) {
+	case ast.SingleType:
+		switch parsed.Name {
+		case "string":
+			return TypeString
+		case "number":
+			return TypeNumber
+		case "bool":
+			return TypeBoolean
+		case "nil":
+			return TypeNil
+		case "Fn":
+			// TODO: So many possible bugs here. Should assert on length of generic arguments.
+			// Should there actually be an ast.ArrayType?
+			parsedParamTypes := parsed.GenericArgs[0].(ast.ArrayType).Types
+
+			paramTypes := make([]Type, len(parsedParamTypes))
+			for i, parsedParamType := range parsedParamTypes {
+				paramTypes[i] = c.typeFromParsed(parsedParamType)
+			}
+
+			parsedReturnType := parsed.GenericArgs[1].(ast.SingleType)
+			returnType := c.typeFromParsed(parsedReturnType)
+
+			return newFunctionType("", paramTypes, returnType)
+		}
 	}
+	panic(TypeError{message: "Unknown type for expression."})
 }
 
 func (c *TypeChecker) expect(actual Type, expected Type, value ast.Expr, expr ast.Expr) Type {
-	if actual != expected {
-		c.error(fmt.Sprintf("expected '%v' type for %s in %s, but got %v", expected, value, expr, actual))
+	if !actual.Equals(expected) {
+		c.error(fmt.Sprintf("expected '%s' type for %s in %s, but got '%s'", expected.String(), value, expr, actual.String()))
 	}
 	return actual
 }

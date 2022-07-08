@@ -34,9 +34,10 @@ func (b CallExpr) Accept(visitor ExprVisitor) interface{} {
 }
 
 type FunctionExpr struct {
-	Name   *Token
-	Params []Token
-	Body   []Stmt
+	Name       *Token
+	Params     []Param
+	Body       []Stmt
+	ReturnType Type
 }
 
 func (b FunctionExpr) Accept(visitor ExprVisitor) interface{} {
@@ -106,9 +107,9 @@ func (b ThisExpr) Accept(visitor ExprVisitor) interface{} {
 }
 
 type TernaryExpr struct {
-	Cond  Expr
-	Left  Expr
-	Right Expr
+	Cond       Expr
+	Consequent Expr
+	Alternate  Expr
 }
 
 func (b TernaryExpr) Accept(visitor ExprVisitor) interface{} {

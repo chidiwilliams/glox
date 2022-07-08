@@ -12,86 +12,6 @@ import (
 	"github.com/chidiwilliams/glox/scan"
 )
 
-func TestTypeChecker_check(t *testing.T) {
-	type args struct {
-		expr ast.Expr
-	}
-	tests := []struct {
-		name string
-		args args
-		want Type
-		err  error
-	}{
-		{
-			"",
-			args{expr: ast.LiteralExpr{Value: float64(3)}},
-			TypeNumber,
-			nil,
-		},
-		{"", args{expr: ast.LiteralExpr{Value: "hello world"}}, TypeString, nil},
-		{"", args{
-			expr: ast.BinaryExpr{
-				Left:     ast.LiteralExpr{Value: float64(3)},
-				Operator: ast.Token{Lexeme: "*"},
-				Right:    ast.LiteralExpr{Value: float64(9)}},
-		}, TypeNumber, nil},
-		{"", args{
-			expr: ast.BinaryExpr{
-				Left:     ast.LiteralExpr{Value: "hello"},
-				Operator: ast.Token{Lexeme: "+"},
-				Right:    ast.LiteralExpr{Value: "world"},
-			},
-		}, TypeString, nil},
-		{"", args{
-			expr: ast.BinaryExpr{
-				Left:     ast.LiteralExpr{Value: "hello"},
-				Operator: ast.Token{Lexeme: "-"},
-				Right:    ast.LiteralExpr{Value: "world"},
-			},
-		}, 0, errors.New("unexpected type: 1 in {{hello} 0 - %!s(<nil>) {world}}, allowed: [0]")},
-		{
-			"variable declaration",
-			args{
-				expr: ast.AssignExpr{
-					Name:  ast.Token{Lexeme: "x"},
-					Value: ast.LiteralExpr{Value: float64(10)},
-				},
-			},
-			TypeNumber,
-			nil,
-		},
-		{
-			"variable access",
-			args{
-				expr: ast.VariableExpr{
-					Name: ast.Token{Lexeme: "x"},
-				},
-			},
-			TypeNumber,
-			nil,
-		},
-	}
-
-	c := NewTypeChecker(nil)
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			exprType, err := c.Check(tt.args.expr)
-			if err != nil {
-				if tt.err == nil {
-					t.Errorf("Check() error = %v, want %v", err, tt.err)
-				} else {
-					if err.Error() != tt.err.Error() {
-						t.Errorf("Check() error = %v, want %v", err, tt.err)
-					}
-				}
-			}
-			if exprType != tt.want {
-				t.Errorf("Check() exprType = %v, want %v", exprType, tt.want)
-			}
-		})
-	}
-}
-
 func TestTypeChecker_CheckStmt(t *testing.T) {
 	type args struct {
 		stmt   ast.Stmt
@@ -113,7 +33,7 @@ func TestTypeChecker_CheckStmt(t *testing.T) {
 	z;
 }`,
 			},
-			errors.New("expected '1' type for {{{21 x %!s(<nil>)} 10 * %!s(<nil>) {%!s(float64=10)}} 7 + %!s(<nil>) {21 y %!s(<nil>)}} in {{{21 x %!s(<nil>)} 10 * %!s(<nil>) {%!s(float64=10)}} 7 + %!s(<nil>) {21 y %!s(<nil>)}}, but got 0"),
+			errors.New("expected 'string' type for {{{21 x %!s(<nil>)} 10 * %!s(<nil>) {%!s(float64=10)}} 7 + %!s(<nil>) {21 y %!s(<nil>)}} in {{{21 x %!s(<nil>)} 10 * %!s(<nil>) {%!s(float64=10)}} 7 + %!s(<nil>) {21 y %!s(<nil>)}}, but got 'number'"),
 		},
 		{
 			"",
@@ -138,13 +58,80 @@ var x: number = 20;
 x = "hello";
 `,
 			},
-			errors.New("expected '0' type for {hello} in {21 x %!s(<nil>) {hello}}, but got 1"),
+			errors.New("expected 'number' type for {hello} in {21 x %!s(<nil>) {hello}}, but got 'string'"),
 		},
 		{
 			"boolean type",
 			args{
 				source: `
 var x: bool = 30 > 2;`,
+			},
+			nil,
+		},
+		{
+			"should type-check a ternary expression",
+			args{
+				source: `
+var x: number = true ? 2 : 9;
+var y: string = 2 < 10 ? "hello" : "world";
+`,
+			},
+			nil,
+		},
+		{
+			"check while condition",
+			args{
+				source: `
+var x = 5;
+while (x >= "hello") {
+	x = x - 1;
+}`,
+			},
+			errors.New("expected 'number' type for {hello} in {{21 x %!s(<nil>)} 18 >= %!s(<nil>) {hello}}, but got 'string'"),
+		},
+		{
+			"check function body",
+			args{
+				source: `
+var fn = fun (firstName: string, lastName: string): string {
+	return firstName - lastName;
+};
+fn;`,
+			},
+			errors.New("unexpected type: string in {{21 firstName %!s(<nil>)} 6 - %!s(<nil>) {21 lastName %!s(<nil>)}}, allowed: [number]"),
+		},
+		{
+			"check function return type",
+			args{
+				source: `
+var fn = fun (firstName: string, lastName: string): number {
+	return firstName + lastName;
+};
+fn;`,
+			},
+			errors.New("expected function [{34 return %!s(<nil>) {{21 firstName %!s(<nil>)} 7 + %!s(<nil>) {21 lastName %!s(<nil>)}}}] to return number, but got string"),
+		},
+		{
+			"check function inferred type",
+			args{
+				source: `
+var fn: Fn<[string, string], string> = fun (firstName: string, lastName: string): string {
+	return firstName + lastName;
+};
+fn;`,
+			},
+			nil,
+		},
+		{
+			"check function statement",
+			args{
+				source: `
+fun getName(): string {
+	return "name";
+}
+
+var fn: Fn<[], string> = getName;
+`,
 			},
 			nil,
 		},

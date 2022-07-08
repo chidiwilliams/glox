@@ -49,7 +49,7 @@ func (a astPrinter) VisitVariableExpr(expr VariableExpr) interface{} {
 }
 
 func (a astPrinter) VisitTernaryExpr(expr TernaryExpr) interface{} {
-	return a.parenthesize("?:", expr.Cond, expr.Left, expr.Right)
+	return a.parenthesize("?:", expr.Cond, expr.Consequent, expr.Alternate)
 }
 
 func (a astPrinter) VisitBinaryExpr(expr BinaryExpr) interface{} {

@@ -13,7 +13,7 @@ func main() {
 		"Assign   : Name Token, Value Expr",
 		"Binary   : Left Expr, Operator Token, Right Expr",
 		"Call     : Callee Expr, Paren Token, Arguments []Expr",
-		"Function : Name *Token, Params []Token, Body []Stmt",
+		"Function : Name *Token, Params []Param, Body []Stmt, ReturnType Type",
 		"Get      : Object Expr, Name Token",
 		"Grouping : Expression Expr",
 		"Literal  : Value interface{}",
@@ -21,7 +21,7 @@ func main() {
 		"Set      : Object Expr, Name Token, Value Expr",
 		"Super    : Keyword Token, Method Token",
 		"This     : Keyword Token",
-		"Ternary  : Cond Expr, Left Expr, Right Expr",
+		"Ternary  : Cond Expr, Consequent Expr, Alternate Expr",
 		"Unary    : Operator Token, Right Expr",
 		"Variable : Name Token",
 	})
@@ -30,14 +30,14 @@ func main() {
 		"Block      : Statements []Stmt",
 		"Class      : Name Token, Superclass *VariableExpr, Methods []FunctionStmt",
 		"Expression : Expr Expr",
-		"Function   : Name Token, Params []Token, Body []Stmt",
+		"Function   : Name Token, Params []Param, Body []Stmt, ReturnType Type",
 		"If         : Condition Expr, ThenBranch Stmt, ElseBranch Stmt",
 		"Print      : Expr Expr",
 		"Return     : Keyword Token, Value Expr",
 		"While      : Condition Expr, Body Stmt",
 		"Continue   : ",
 		"Break      : ",
-		"Var        : Name Token, Initializer Expr, TypeDecl string",
+		"Var        : Name Token, Initializer Expr, TypeDecl Type",
 	})
 }
 

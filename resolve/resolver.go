@@ -131,8 +131,8 @@ func (r *Resolver) resolveFunction(function ast.FunctionStmt, fnType functionTyp
 
 	r.beginScope()
 	for _, param := range function.Params {
-		r.declare(param)
-		r.define(param)
+		r.declare(param.Token)
+		r.define(param.Token)
 	}
 	r.ResolveStmts(function.Body)
 	r.endScope()
@@ -193,8 +193,8 @@ func (r *Resolver) VisitFunctionExpr(expr ast.FunctionExpr) interface{} {
 	// function call scope
 	r.beginScope()
 	for _, param := range expr.Params {
-		r.declare(param)
-		r.define(param)
+		r.declare(param.Token)
+		r.define(param.Token)
 	}
 	r.ResolveStmts(expr.Body)
 	r.endScope()
@@ -251,8 +251,8 @@ func (r *Resolver) VisitThisExpr(expr ast.ThisExpr) interface{} {
 
 func (r *Resolver) VisitTernaryExpr(expr ast.TernaryExpr) interface{} {
 	r.resolveExpr(expr.Cond)
-	r.resolveExpr(expr.Left)
-	r.resolveExpr(expr.Right)
+	r.resolveExpr(expr.Consequent)
+	r.resolveExpr(expr.Alternate)
 	return nil
 }
 

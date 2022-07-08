@@ -423,9 +423,9 @@ func (in *Interpreter) VisitUnaryExpr(expr ast.UnaryExpr) interface{} {
 func (in *Interpreter) VisitTernaryExpr(expr ast.TernaryExpr) interface{} {
 	cond := in.evaluate(expr.Cond)
 	if in.isTruthy(cond) {
-		return in.evaluate(expr.Left)
+		return in.evaluate(expr.Consequent)
 	}
-	return in.evaluate(expr.Right)
+	return in.evaluate(expr.Alternate)
 }
 
 func (in *Interpreter) executeBlock(statements []ast.Stmt, env Environment) {

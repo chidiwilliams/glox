@@ -31,9 +31,10 @@ func (b ExpressionStmt) Accept(visitor StmtVisitor) interface{} {
 }
 
 type FunctionStmt struct {
-	Name   Token
-	Params []Token
-	Body   []Stmt
+	Name       Token
+	Params     []Param
+	Body       []Stmt
+	ReturnType Type
 }
 
 func (b FunctionStmt) Accept(visitor StmtVisitor) interface{} {
@@ -93,7 +94,7 @@ func (b BreakStmt) Accept(visitor StmtVisitor) interface{} {
 type VarStmt struct {
 	Name        Token
 	Initializer Expr
-	TypeDecl    string
+	TypeDecl    Type
 }
 
 func (b VarStmt) Accept(visitor StmtVisitor) interface{} {

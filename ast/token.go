@@ -10,6 +10,10 @@ const (
 	TokenRightParen
 	TokenLeftBrace
 	TokenRightBrace
+	TokenLeftBracket
+	TokenRightBracket
+	TokenLeftAngleBracket
+	TokenRightAngleBracket
 	TokenComma
 	TokenDot
 	TokenMinus

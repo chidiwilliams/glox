@@ -35,12 +35,14 @@ Parser grammar:
 
 	program      => declaration* EOF
 	declaration  => classDecl | funcDecl | varDecl | statement
-	classDecl    => "class" IDENTIFIER ( "<" IDENTIFIER )? "{" function* "}"
+	classDecl    => "class" IDENTIFIER ( "<" IDENTIFIER )? "{" method* "}"
+	method       => IDENTIFIER parameterList? ( ":" type )? block
 	funDecl      => "fun" function
-	function     => IDENTIFIER "(" parameters? ")" block
-	parameters   => IDENTIFIER ( "," IDENTIFIER )*
+	function     => IDENTIFIER parameterList ( ":" type )? block
+	parameters   => IDENTIFIER ( ":" type )? ( "," IDENTIFIER ( ":" type )? )*
 	varDecl      => "var" IDENTIFIER ( ":" type )? ( "=" expression )? ";"
-	type         => "number" | "string"
+	type         => "[" type ( "," type )* "]"
+                  | IDENTIFIER ( "<" type ( "," type )* ">" )?
 	statement    => exprStmt | ifStmt | forStmt | printStmt | returnStmt | whileStmt
 									| breakStmt | continueStmt | block
 	exprStmt     => expression ";"
@@ -65,7 +67,7 @@ Parser grammar:
 	arguments    => expression ( "," expression )*
 	primary      => NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")"
 									| IDENTIFIER | functionExpr | "super" . IDENTIFIER
-	functionExpr => "fun" IDENTIFIER? "(" parameters? ")" block
+	functionExpr => "fun" IDENTIFIER? parameterList ( ":" type )? block
 
 	Reference: C Operator Precedence https://en.cppreference.com/w/c/language/operator_precedence
 
@@ -134,9 +136,9 @@ func (p *Parser) classDeclaration() ast.Stmt {
 
 func (p *Parser) varDeclaration() ast.Stmt {
 	name := p.consume(ast.TokenIdentifier, "Expect variable name")
-	var typeDecl string
+	var typeDecl ast.Type
 	if p.match(ast.TokenColon) {
-		typeDecl = p.typeDeclaration()
+		typeDecl = p.typeAnnotation()
 	}
 	var initializer ast.Expr
 	if p.match(ast.TokenEqual) {
@@ -146,12 +148,49 @@ func (p *Parser) varDeclaration() ast.Stmt {
 	return ast.VarStmt{Name: name, Initializer: initializer, TypeDecl: typeDecl}
 }
 
-func (p *Parser) typeDeclaration() string {
-	if p.match(ast.TokenIdentifier) {
-		return p.previous().Lexeme
+func (p *Parser) typeAnnotation() ast.Type {
+	// Array type
+	if p.match(ast.TokenLeftBracket) {
+		types := make([]ast.Type, 0)
+
+		for !p.check(ast.TokenRightBracket) {
+			nextType := p.typeAnnotation()
+			types = append(types, nextType)
+
+			if !p.match(ast.TokenComma) {
+				break
+			}
+		}
+
+		p.consume(ast.TokenRightBracket, "Expect ']' after type list.")
+
+		return ast.ArrayType{Types: types}
 	}
-	p.error(p.previous(), "Expect type tag to be a string.")
-	return ""
+
+	if p.match(ast.TokenIdentifier) {
+		typeName := p.previous().Lexeme
+
+		var genericArgs []ast.Type
+		if p.match(ast.TokenLess) {
+			genericArgs = make([]ast.Type, 0)
+
+			for !p.check(ast.TokenGreater) {
+				nextType := p.typeAnnotation()
+				genericArgs = append(genericArgs, nextType)
+
+				if !p.match(ast.TokenComma) {
+					break
+				}
+			}
+
+			p.consume(ast.TokenGreater, "Expect '>' after generic arguments.")
+		}
+
+		return ast.SingleType{Name: typeName, GenericArgs: genericArgs}
+	}
+
+	p.error(p.previous(), "Could not parse type annotation.")
+	return nil
 }
 
 // statement parses statements. A statement can be a print,
@@ -301,32 +340,26 @@ func (p *Parser) function(kind string) ast.FunctionStmt {
 	name := p.consume(ast.TokenIdentifier, "Expect "+kind+" name.")
 
 	// Nil parameters used to check if the method is a getter. Should it use a field of its own?
-	var parameters []ast.Token
+	var parameters []ast.Param
+	var returnType ast.Type
 
 	if kind != "method" || p.check(ast.TokenLeftParen) {
-		parameters = make([]ast.Token, 0)
-		p.consume(ast.TokenLeftParen, "Expect '(' after "+kind+" name.")
+		parameters = p.parameterList(kind)
 
-		if !p.check(ast.TokenRightParen) {
-			for {
-				if len(parameters) >= 255 {
-					p.error(p.peek(), "Can't have more than 255 parameters.")
-				}
-				param := p.consume(ast.TokenIdentifier, "Expect parameter name.")
-				parameters = append(parameters, param)
-				if !p.match(ast.TokenComma) {
-					break
-				}
-			}
+		if p.match(ast.TokenColon) {
+			returnType = p.typeAnnotation()
 		}
-
-		p.consume(ast.TokenRightParen, "Expect ')' after parameters.")
 	}
 
 	p.consume(ast.TokenLeftBrace, "Expect '{' before "+kind+" body.")
 
 	body := p.block()
-	return ast.FunctionStmt{Name: name, Params: parameters, Body: body}
+	return ast.FunctionStmt{
+		Name:       name,
+		Params:     parameters,
+		Body:       body,
+		ReturnType: returnType,
+	}
 }
 
 func (p *Parser) expression() ast.Expr {
@@ -374,7 +407,7 @@ func (p *Parser) ternary() ast.Expr {
 		cond1 := p.ternary()
 		p.consume(ast.TokenColon, "Expect ':' after conditional.")
 		cond2 := p.ternary()
-		expr = ast.TernaryExpr{Cond: expr, Left: cond1, Right: cond2}
+		expr = ast.TernaryExpr{Cond: expr, Consequent: cond1, Alternate: cond2}
 	}
 
 	return expr
@@ -535,26 +568,42 @@ func (p *Parser) functionExpression() ast.Expr {
 		name = &fnName
 	}
 
-	p.consume(ast.TokenLeftParen, "Expect '(' after function name.")
+	parameters := p.parameterList("function")
 
-	parameters := make([]ast.Token, 0)
+	var returnType ast.Type
+	if p.match(ast.TokenColon) {
+		returnType = p.typeAnnotation()
+	}
+
+	p.consume(ast.TokenLeftBrace, "Expect '{' before function body.")
+
+	body := p.block()
+	return ast.FunctionExpr{Name: name, Params: parameters, Body: body, ReturnType: returnType}
+}
+
+func (p *Parser) parameterList(kind string) []ast.Param {
+	p.consume(ast.TokenLeftParen, "Expect '(' after "+kind+" name.")
+
+	parameters := make([]ast.Param, 0)
 	if !p.check(ast.TokenRightParen) {
 		for {
 			if len(parameters) >= 255 {
 				p.error(p.peek(), "Can't have more than 255 parameters.")
 			}
-			parameters = append(parameters, p.consume(ast.TokenIdentifier, "Expect parameter name."))
+			paramToken := p.consume(ast.TokenIdentifier, "Expect parameter name.")
+			var paramType ast.Type
+			if p.match(ast.TokenColon) {
+				paramType = p.typeAnnotation()
+			}
+			parameters = append(parameters, ast.Param{Token: paramToken, Type: paramType})
 			if !p.match(ast.TokenComma) {
 				break
 			}
 		}
 	}
 
-	p.consume(ast.TokenRightParen, "Expect ')' after parameters")
-	p.consume(ast.TokenLeftBrace, "Expect '{' before function body.")
-
-	body := p.block()
-	return ast.FunctionExpr{Name: name, Params: parameters, Body: body}
+	p.consume(ast.TokenRightParen, "Expect ')' after parameters.")
+	return parameters
 }
 
 // consume checks that the next ast.Token is of the given ast.TokenType and then
