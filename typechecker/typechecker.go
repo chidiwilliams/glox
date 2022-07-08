@@ -77,14 +77,12 @@ func (t typeFunction) String() string {
 	return name
 }
 
-type Return struct {
-	Value Type
-}
-
 type TypeChecker struct {
-	env         *interpret.Environment
-	globals     *interpret.Environment
-	interpreter *interpret.Interpreter
+	env                  *interpret.Environment
+	globals              *interpret.Environment
+	interpreter          *interpret.Interpreter
+	declaredFnReturnType Type
+	inferredFnReturnType Type
 }
 
 func (c *TypeChecker) VisitBlockStmt(stmt ast.BlockStmt) interface{} {
@@ -126,22 +124,33 @@ func (c *TypeChecker) VisitIfStmt(stmt ast.IfStmt) interface{} {
 	c.expect(conditionType, TypeBoolean, stmt.Condition, stmt.Condition)
 
 	c.checkStmt(stmt.ThenBranch)
-	c.checkStmt(stmt.ElseBranch)
+	if stmt.ElseBranch != nil {
+		c.checkStmt(stmt.ElseBranch)
+	}
 	return nil
 }
 
 func (c *TypeChecker) VisitPrintStmt(stmt ast.PrintStmt) interface{} {
-	// TODO implement me
-	panic("implement me")
+	return nil
 }
 
 func (c *TypeChecker) VisitReturnStmt(stmt ast.ReturnStmt) interface{} {
-	value := TypeNil
+	returnType := TypeNil
 	if stmt.Value != nil {
-		value = c.check(stmt.Value)
+		returnType = c.check(stmt.Value)
 	}
 
-	panic(Return{Value: value})
+	if c.declaredFnReturnType != nil && !c.declaredFnReturnType.Equals(returnType) {
+		panic(TypeError{message: fmt.Sprintf("expected enclosing function to return '%s', but got '%s'", c.declaredFnReturnType, returnType)})
+	}
+
+	// For now there's no union type, so without the declared annotation, the function's return type
+	// is just the type of the value returned by the last traversed return statement. Ideally, the
+	// inferred function type should be some kind of union of all its return values. Or at least,
+	// reduced to "any" if there's no union.
+	c.inferredFnReturnType = returnType
+
+	return nil
 }
 
 func (c *TypeChecker) VisitWhileStmt(stmt ast.WhileStmt) interface{} {
@@ -152,13 +161,11 @@ func (c *TypeChecker) VisitWhileStmt(stmt ast.WhileStmt) interface{} {
 }
 
 func (c *TypeChecker) VisitContinueStmt(stmt ast.ContinueStmt) interface{} {
-	// TODO implement me
-	panic("implement me")
+	return nil
 }
 
 func (c *TypeChecker) VisitBreakStmt(stmt ast.BreakStmt) interface{} {
-	// TODO implement me
-	panic("implement me")
+	return nil
 }
 
 func (c *TypeChecker) VisitVarStmt(stmt ast.VarStmt) interface{} {
@@ -167,7 +174,7 @@ func (c *TypeChecker) VisitVarStmt(stmt ast.VarStmt) interface{} {
 		valueType := c.check(stmt.Initializer)
 
 		// With type check
-		if stmt.TypeDecl != "" {
+		if stmt.TypeDecl != nil {
 			expectedType := c.typeFromParsed(stmt.TypeDecl)
 			c.expect(valueType, expectedType, stmt.Initializer, stmt.Initializer)
 		}
@@ -219,21 +226,6 @@ func (c *TypeChecker) CheckStmts(stmts []ast.Stmt) (err error) {
 	return nil
 }
 
-func (c *TypeChecker) CheckStmt(stmt ast.Stmt) (err error) {
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			if typeErr, ok := recovered.(TypeError); ok {
-				err = typeErr
-			} else {
-				panic(recovered)
-			}
-		}
-	}()
-
-	c.checkStmt(stmt)
-	return nil
-}
-
 func (c *TypeChecker) checkStmt(stmt ast.Stmt) {
 	stmt.Accept(c)
 }
@@ -274,7 +266,7 @@ func (c *TypeChecker) VisitFunctionExpr(expr ast.FunctionExpr) interface{} {
 	return c.checkFunction(expr.Params, expr.Body, expr.ReturnType)
 }
 
-func (c *TypeChecker) checkFunction(params []ast.Param, body []ast.Stmt, returnType ast.Type) typeFunction {
+func (c *TypeChecker) checkFunction(params []ast.Param, body []ast.Stmt, parsedReturnType ast.Type) typeFunction {
 	fnEnv := interpret.Environment{Enclosing: c.env}
 	paramTypes := make([]Type, len(params))
 
@@ -284,27 +276,26 @@ func (c *TypeChecker) checkFunction(params []ast.Param, body []ast.Stmt, returnT
 		paramTypes[i] = paramType
 	}
 
-	actualReturnType := c.checkFunctionBody(body, fnEnv)
-	if returnType != nil && !actualReturnType.Equals(c.typeFromParsed(returnType)) {
-		panic(TypeError{message: fmt.Sprintf("expected function %s to return %s, but got %s", body, returnType, actualReturnType)})
+	returnType := c.typeFromParsed(parsedReturnType)
+	actualReturnType := c.checkFunctionBody(body, fnEnv, returnType)
+	if parsedReturnType != nil && !actualReturnType.Equals(returnType) {
+		panic(TypeError{message: fmt.Sprintf("expected function %s to return %s, but got %s", body, parsedReturnType, actualReturnType)})
 	}
 
 	return typeFunction{paramTypes: paramTypes, returnType: actualReturnType}
 }
 
-func (c *TypeChecker) checkFunctionBody(fnBody []ast.Stmt, fnEnv interpret.Environment) (returnType Type) {
-	defer func() {
-		if err := recover(); err != nil {
-			if v, ok := err.(Return); ok {
-				returnType = v.Value
-			} else {
-				panic(err)
-			}
-		}
-	}()
+func (c *TypeChecker) checkFunctionBody(fnBody []ast.Stmt, fnEnv interpret.Environment, declaredReturnType Type) Type {
+	previousEnclosingFnReturnType := c.declaredFnReturnType
+	defer func() { c.declaredFnReturnType = previousEnclosingFnReturnType }()
+
+	c.declaredFnReturnType = declaredReturnType
 
 	c.checkBlock(fnBody, fnEnv)
-	return TypeNil
+
+	returnType := c.inferredFnReturnType
+	c.inferredFnReturnType = nil
+	return returnType
 }
 
 func (c *TypeChecker) VisitGetExpr(expr ast.GetExpr) interface{} {

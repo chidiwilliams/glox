@@ -33,7 +33,7 @@ func TestTypeChecker_CheckStmt(t *testing.T) {
 	z;
 }`,
 			},
-			errors.New("expected 'string' type for {{{21 x %!s(<nil>)} 10 * %!s(<nil>) {%!s(float64=10)}} 7 + %!s(<nil>) {21 y %!s(<nil>)}} in {{{21 x %!s(<nil>)} 10 * %!s(<nil>) {%!s(float64=10)}} 7 + %!s(<nil>) {21 y %!s(<nil>)}}, but got 'number'"),
+			errors.New("expected 'string' type for {{{25 x %!s(<nil>)} 14 * %!s(<nil>) {%!s(float64=10)}} 11 + %!s(<nil>) {25 y %!s(<nil>)}} in {{{25 x %!s(<nil>)} 14 * %!s(<nil>) {%!s(float64=10)}} 11 + %!s(<nil>) {25 y %!s(<nil>)}}, but got 'number'"),
 		},
 		{
 			"",
@@ -58,7 +58,7 @@ var x: number = 20;
 x = "hello";
 `,
 			},
-			errors.New("expected 'number' type for {hello} in {21 x %!s(<nil>) {hello}}, but got 'string'"),
+			errors.New("expected 'number' type for {hello} in {25 x %!s(<nil>) {hello}}, but got 'string'"),
 		},
 		{
 			"boolean type",
@@ -87,7 +87,7 @@ while (x >= "hello") {
 	x = x - 1;
 }`,
 			},
-			errors.New("expected 'number' type for {hello} in {{21 x %!s(<nil>)} 18 >= %!s(<nil>) {hello}}, but got 'string'"),
+			errors.New("expected 'number' type for {hello} in {{25 x %!s(<nil>)} 22 >= %!s(<nil>) {hello}}, but got 'string'"),
 		},
 		{
 			"check function body",
@@ -98,7 +98,7 @@ var fn = fun (firstName: string, lastName: string): string {
 };
 fn;`,
 			},
-			errors.New("unexpected type: string in {{21 firstName %!s(<nil>)} 6 - %!s(<nil>) {21 lastName %!s(<nil>)}}, allowed: [number]"),
+			errors.New("unexpected type: string in {{25 firstName %!s(<nil>)} 10 - %!s(<nil>) {25 lastName %!s(<nil>)}}, allowed: [number]"),
 		},
 		{
 			"check function return type",
@@ -109,7 +109,7 @@ var fn = fun (firstName: string, lastName: string): number {
 };
 fn;`,
 			},
-			errors.New("expected function [{34 return %!s(<nil>) {{21 firstName %!s(<nil>)} 7 + %!s(<nil>) {21 lastName %!s(<nil>)}}}] to return number, but got string"),
+			errors.New("expected enclosing function to return 'number', but got 'string'"),
 		},
 		{
 			"check function inferred type",
@@ -135,6 +135,18 @@ var fn: Fn<[], string> = getName;
 			},
 			nil,
 		},
+		{
+			"check function with different return types",
+			args{
+				source: `
+fun getName(): number {
+	if (true) return 0;
+	return "name";
+}
+`,
+			},
+			errors.New("expected enclosing function to return 'number', but got 'string'"),
+		},
 	}
 
 	for _, tt := range tests {
@@ -151,6 +163,10 @@ var fn: Fn<[], string> = getName;
 					if err.Error() != tt.err.Error() {
 						t.Errorf("Check() error = %v, want %v", err, tt.err)
 					}
+				}
+			} else {
+				if tt.err != nil {
+					t.Errorf("Check() error = %v, want %v", err, tt.err)
 				}
 			}
 		})
