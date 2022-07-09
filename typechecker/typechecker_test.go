@@ -13,7 +13,7 @@ import (
 	"github.com/chidiwilliams/glox/scan"
 )
 
-func TestTypeChecker_CheckStmtFile(t *testing.T) {
+func TestTypeChecker_CheckStmts(t *testing.T) {
 	paths, err := filepath.Glob(filepath.Join("testdata", "*.input"))
 	if err != nil {
 		t.Fatal(err)

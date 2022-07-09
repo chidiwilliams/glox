@@ -1,0 +1,11 @@
+fun applyBinary(x: number, y: number, callback: Fn<[number, number], number>): number {
+    return callback(x, y);
+}
+
+applyBinary(
+    2,
+    3,
+    fun (x: number, y: number): number {
+        return x * y;
+    }
+);

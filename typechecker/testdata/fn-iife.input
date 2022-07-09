@@ -1,0 +1,4 @@
+var num = (fun (x: number): number {
+    return x * x;
+})(2);
+print num;

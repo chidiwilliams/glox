@@ -1,0 +1,7 @@
+fun getMultiplier(n: number): Fn<[number], number> {
+    return fun (in: number): number {
+        return n * in;
+    };
+}
+
+getMultiplier(2);

@@ -114,9 +114,7 @@ func (c *TypeChecker) VisitExpressionStmt(stmt ast.ExpressionStmt) interface{} {
 }
 
 func (c *TypeChecker) VisitFunctionStmt(stmt ast.FunctionStmt) interface{} {
-	fnType := c.checkFunction(stmt.Params, stmt.Body, stmt.ReturnType)
-	c.env.Define(stmt.Name.Lexeme, fnType)
-	return nil
+	return c.checkFunction(&stmt.Name, stmt.Params, stmt.Body, stmt.ReturnType, c.env)
 }
 
 func (c *TypeChecker) VisitIfStmt(stmt ast.IfStmt) interface{} {
@@ -265,30 +263,34 @@ func (c *TypeChecker) VisitCallExpr(expr ast.CallExpr) interface{} {
 }
 
 func (c *TypeChecker) VisitFunctionExpr(expr ast.FunctionExpr) interface{} {
-	return c.checkFunction(expr.Params, expr.Body, expr.ReturnType)
+	fnDeclEnv := &interpret.Environment{Enclosing: c.env}
+	return c.checkFunction(expr.Name, expr.Params, expr.Body, expr.ReturnType, fnDeclEnv)
 }
 
-func (c *TypeChecker) checkFunction(params []ast.Param, body []ast.Stmt, parsedReturnType ast.Type) typeFunction {
-	fnEnv := interpret.Environment{Enclosing: c.env}
+func (c *TypeChecker) checkFunction(name *ast.Token, params []ast.Param, body []ast.Stmt, parsedReturnType ast.Type, env *interpret.Environment) typeFunction {
+	// Predefine function type from signature for recursive calls
 	paramTypes := make([]Type, len(params))
-
 	for i, param := range params {
-		paramType := c.typeFromParsed(param.Type)
-		fnEnv.Define(param.Token.Lexeme, paramType)
-		paramTypes[i] = paramType
+		paramTypes[i] = c.typeFromParsed(param.Type)
 	}
 
-	var returnType Type
-	if parsedReturnType != nil {
-		returnType = c.typeFromParsed(parsedReturnType)
-	}
-	actualReturnType := c.checkFunctionBody(body, fnEnv, returnType)
-
-	if parsedReturnType != nil && !actualReturnType.Equals(returnType) {
-		panic(TypeError{message: fmt.Sprintf("expected function %s to return %s, but got %s", body, parsedReturnType, actualReturnType)})
+	returnType := c.typeFromParsed(parsedReturnType)
+	if name != nil {
+		c.env.Define(name.Lexeme, newFunctionType("", paramTypes, returnType))
 	}
 
-	return typeFunction{paramTypes: paramTypes, returnType: actualReturnType}
+	fnEnv := interpret.Environment{Enclosing: env}
+	for i, param := range params {
+		fnEnv.Define(param.Token.Lexeme, paramTypes[i])
+	}
+
+	inferredReturnType := c.checkFunctionBody(body, fnEnv, returnType)
+
+	if parsedReturnType != nil && !inferredReturnType.Equals(returnType) {
+		panic(TypeError{message: fmt.Sprintf("expected function %s to return %s, but got %s", body, parsedReturnType, inferredReturnType)})
+	}
+
+	return typeFunction{paramTypes: paramTypes, returnType: inferredReturnType}
 }
 
 func (c *TypeChecker) checkFunctionBody(fnBody []ast.Stmt, fnEnv interpret.Environment, declaredReturnType Type) Type {

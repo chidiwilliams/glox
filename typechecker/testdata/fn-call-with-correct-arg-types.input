@@ -1,4 +1,4 @@
-fun addThree(x: number, y: number, z: number) {
+fun addThree(x: number, y: number, z: number): number {
 	return x + y + z;
 }
 
