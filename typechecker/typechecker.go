@@ -186,6 +186,7 @@ func (c *TypeChecker) VisitVarStmt(stmt ast.VarStmt) interface{} {
 
 func NewTypeChecker(interpreter *interpret.Interpreter) *TypeChecker {
 	globals := interpret.Environment{}
+	globals.Define("clock", newFunctionType("", []Type{}, TypeNumber))
 	return &TypeChecker{env: &globals, globals: &globals, interpreter: interpreter}
 }
 
@@ -258,8 +259,23 @@ func (c *TypeChecker) VisitBinaryExpr(expr ast.BinaryExpr) interface{} {
 }
 
 func (c *TypeChecker) VisitCallExpr(expr ast.CallExpr) interface{} {
-	// TODO implement me
-	panic("implement me")
+	calleeType := c.check(expr.Callee)
+
+	fnType, ok := calleeType.(typeFunction)
+	if !ok {
+		panic(TypeError{message: "Cannot call a value that's not a function"})
+	}
+
+	if len(fnType.paramTypes) != len(expr.Arguments) {
+		panic(TypeError{message: fmt.Sprintf("function of type %s expects %d arguments, got %d", fnType, len(fnType.paramTypes), len(expr.Arguments))})
+	}
+
+	for i, arg := range expr.Arguments {
+		argType := c.check(arg)
+		c.expect(argType, fnType.paramTypes[i], arg, expr)
+	}
+
+	return fnType.returnType
 }
 
 func (c *TypeChecker) VisitFunctionExpr(expr ast.FunctionExpr) interface{} {
@@ -276,8 +292,12 @@ func (c *TypeChecker) checkFunction(params []ast.Param, body []ast.Stmt, parsedR
 		paramTypes[i] = paramType
 	}
 
-	returnType := c.typeFromParsed(parsedReturnType)
+	var returnType Type
+	if parsedReturnType != nil {
+		returnType = c.typeFromParsed(parsedReturnType)
+	}
 	actualReturnType := c.checkFunctionBody(body, fnEnv, returnType)
+
 	if parsedReturnType != nil && !actualReturnType.Equals(returnType) {
 		panic(TypeError{message: fmt.Sprintf("expected function %s to return %s, but got %s", body, parsedReturnType, actualReturnType)})
 	}

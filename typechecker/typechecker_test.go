@@ -147,6 +147,46 @@ fun getName(): number {
 			},
 			errors.New("expected enclosing function to return 'number', but got 'string'"),
 		},
+		{
+			"check function calls",
+			args{
+				source: `
+fun addThree(x: number, y: number, z: number) {
+	return x + y + z;
+}
+
+addThree(1, 2, 3);`,
+			},
+			nil,
+		},
+		{
+			"check function call with wrong arg",
+			args{
+				source: `
+fun addThree(x: number, y: number, z: number) {
+	return x + y + z;
+}
+
+addThree(1, "hello", 3);`,
+			},
+			errors.New("expected 'number' type for {hello} in {{25 addThree %!s(<nil>)} 1 ) %!s(<nil>) [{%!s(float64=1)} {hello} {%!s(float64=3)}]}, but got 'string'"),
+		},
+		{
+			"check function call with wrong arg - native fn",
+			args{
+				source: `
+clock(1);`,
+			},
+			errors.New("function of type Fn<[], number> expects 0 arguments, got 1"),
+		},
+		{
+			"check function call with correct number of args - native fn",
+			args{
+				source: `
+clock();`,
+			},
+			nil,
+		},
 	}
 
 	for _, tt := range tests {
