@@ -131,6 +131,7 @@ func (c *TypeChecker) VisitIfStmt(stmt ast.IfStmt) interface{} {
 }
 
 func (c *TypeChecker) VisitPrintStmt(stmt ast.PrintStmt) interface{} {
+	c.check(stmt.Expr)
 	return nil
 }
 
@@ -190,25 +191,6 @@ func NewTypeChecker(interpreter *interpret.Interpreter) *TypeChecker {
 	return &TypeChecker{env: &globals, globals: &globals, interpreter: interpreter}
 }
 
-func (c *TypeChecker) Check(expr ast.Expr) (exprType Type, err error) {
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			if typeErr, ok := recovered.(TypeError); ok {
-				err = typeErr
-			} else {
-				panic(recovered)
-			}
-		}
-	}()
-
-	exprType = c.check(expr)
-	return exprType, nil
-}
-
-func (c *TypeChecker) check(expr ast.Expr) Type {
-	return expr.Accept(c).(Type)
-}
-
 func (c *TypeChecker) CheckStmts(stmts []ast.Stmt) (err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -225,6 +207,10 @@ func (c *TypeChecker) CheckStmts(stmts []ast.Stmt) (err error) {
 	}
 
 	return nil
+}
+
+func (c *TypeChecker) check(expr ast.Expr) Type {
+	return expr.Accept(c).(Type)
 }
 
 func (c *TypeChecker) checkStmt(stmt ast.Stmt) {

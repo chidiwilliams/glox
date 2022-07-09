@@ -1,0 +1,4 @@
+var fn: Fn<[string, string], string> = fun (firstName: string, lastName: string): string {
+	return firstName + lastName;
+};
+fn;

@@ -1,0 +1,4 @@
+fun getName(): number {
+	if (true) return 0;
+	return "name";
+}

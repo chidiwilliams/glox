@@ -1,0 +1,2 @@
+var x: number = true ? 2 : 9;
+var y: string = 2 < 10 ? "hello" : "world";

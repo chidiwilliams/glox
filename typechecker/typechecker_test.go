@@ -1,8 +1,9 @@
 package typechecker
 
 import (
-	"errors"
 	"os"
+	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/chidiwilliams/glox/ast"
@@ -12,202 +13,38 @@ import (
 	"github.com/chidiwilliams/glox/scan"
 )
 
-func TestTypeChecker_CheckStmt(t *testing.T) {
-	type args struct {
-		stmt   ast.Stmt
-		source string
-	}
-	tests := []struct {
-		name string
-		args args
-		err  error
-	}{
-		{
-			"",
-			args{
-				source: `
-{
-	var x = 10;
-	var y = 20;
-	var z: string = x * 10 + y;
-	z;
-}`,
-			},
-			errors.New("expected 'string' type for {{{25 x %!s(<nil>)} 14 * %!s(<nil>) {%!s(float64=10)}} 11 + %!s(<nil>) {25 y %!s(<nil>)}} in {{{25 x %!s(<nil>)} 14 * %!s(<nil>) {%!s(float64=10)}} 11 + %!s(<nil>) {25 y %!s(<nil>)}}, but got 'number'"),
-		},
-		{
-			"",
-			args{
-				source: `
-{
-	var x = 10;
-	{
-		var x: string = "";
-		x + "hello";
-	}
-	x - 20;
-}`,
-			},
-			nil,
-		},
-		{
-			"should type-check a variable re-assignment",
-			args{
-				source: `
-var x: number = 20;
-x = "hello";
-`,
-			},
-			errors.New("expected 'number' type for {hello} in {25 x %!s(<nil>) {hello}}, but got 'string'"),
-		},
-		{
-			"boolean type",
-			args{
-				source: `
-var x: bool = 30 > 2;`,
-			},
-			nil,
-		},
-		{
-			"should type-check a ternary expression",
-			args{
-				source: `
-var x: number = true ? 2 : 9;
-var y: string = 2 < 10 ? "hello" : "world";
-`,
-			},
-			nil,
-		},
-		{
-			"check while condition",
-			args{
-				source: `
-var x = 5;
-while (x >= "hello") {
-	x = x - 1;
-}`,
-			},
-			errors.New("expected 'number' type for {hello} in {{25 x %!s(<nil>)} 22 >= %!s(<nil>) {hello}}, but got 'string'"),
-		},
-		{
-			"check function body",
-			args{
-				source: `
-var fn = fun (firstName: string, lastName: string): string {
-	return firstName - lastName;
-};
-fn;`,
-			},
-			errors.New("unexpected type: string in {{25 firstName %!s(<nil>)} 10 - %!s(<nil>) {25 lastName %!s(<nil>)}}, allowed: [number]"),
-		},
-		{
-			"check function return type",
-			args{
-				source: `
-var fn = fun (firstName: string, lastName: string): number {
-	return firstName + lastName;
-};
-fn;`,
-			},
-			errors.New("expected enclosing function to return 'number', but got 'string'"),
-		},
-		{
-			"check function inferred type",
-			args{
-				source: `
-var fn: Fn<[string, string], string> = fun (firstName: string, lastName: string): string {
-	return firstName + lastName;
-};
-fn;`,
-			},
-			nil,
-		},
-		{
-			"check function statement",
-			args{
-				source: `
-fun getName(): string {
-	return "name";
-}
-
-var fn: Fn<[], string> = getName;
-`,
-			},
-			nil,
-		},
-		{
-			"check function with different return types",
-			args{
-				source: `
-fun getName(): number {
-	if (true) return 0;
-	return "name";
-}
-`,
-			},
-			errors.New("expected enclosing function to return 'number', but got 'string'"),
-		},
-		{
-			"check function calls",
-			args{
-				source: `
-fun addThree(x: number, y: number, z: number) {
-	return x + y + z;
-}
-
-addThree(1, 2, 3);`,
-			},
-			nil,
-		},
-		{
-			"check function call with wrong arg",
-			args{
-				source: `
-fun addThree(x: number, y: number, z: number) {
-	return x + y + z;
-}
-
-addThree(1, "hello", 3);`,
-			},
-			errors.New("expected 'number' type for {hello} in {{25 addThree %!s(<nil>)} 1 ) %!s(<nil>) [{%!s(float64=1)} {hello} {%!s(float64=3)}]}, but got 'string'"),
-		},
-		{
-			"check function call with wrong arg - native fn",
-			args{
-				source: `
-clock(1);`,
-			},
-			errors.New("function of type Fn<[], number> expects 0 arguments, got 1"),
-		},
-		{
-			"check function call with correct number of args - native fn",
-			args{
-				source: `
-clock();`,
-			},
-			nil,
-		},
+func TestTypeChecker_CheckStmtFile(t *testing.T) {
+	paths, err := filepath.Glob(filepath.Join("testdata", "*.input"))
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for _, path := range paths {
+		_, filename := filepath.Split(path)
+		testName := filename[:len(filename)-len(filepath.Ext(path))]
 
-			statements, interpreter := runSource(t, tt.args.source)
-
-			c := NewTypeChecker(interpreter)
-			err := c.CheckStmts(statements)
+		t.Run(testName, func(t *testing.T) {
+			source, err := os.ReadFile(path)
 			if err != nil {
-				if tt.err == nil {
-					t.Errorf("Check() error = %v, want %v", err, tt.err)
-				} else {
-					if err.Error() != tt.err.Error() {
-						t.Errorf("Check() error = %v, want %v", err, tt.err)
-					}
-				}
-			} else {
-				if tt.err != nil {
-					t.Errorf("Check() error = %v, want %v", err, tt.err)
-				}
+				t.Fatal("error reading test source file:", err)
+			}
+
+			statements, interpreter := runSource(t, string(source))
+
+			typeChecker := NewTypeChecker(interpreter)
+			typeErr := typeChecker.CheckStmts(statements)
+
+			goldenFile := filepath.Join("testdata", testName+".golden")
+			want, err := os.ReadFile(goldenFile)
+			if err != nil {
+				t.Fatal("error reading golden file", err)
+			}
+			wantErr := string(want)
+
+			if typeErr != nil && wantErr == "" ||
+				typeErr != nil && typeErr.Error()+"\n" != wantErr ||
+				typeErr == nil && wantErr != "" {
+				t.Errorf("Check() error = %v, want %v", strconv.Quote(typeErr.Error()), strconv.Quote(wantErr))
 			}
 		})
 	}

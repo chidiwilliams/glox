@@ -1,0 +1,2 @@
+var x: number = 20;
+x = "hello";

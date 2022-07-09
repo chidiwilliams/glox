@@ -1,0 +1,5 @@
+fun addThree(x: number, y: number, z: number) {
+	return x + y + z;
+}
+
+addThree(1, "hello", 3);

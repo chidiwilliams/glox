@@ -1,0 +1,4 @@
+var x = 5;
+while (x >= "hello") {
+	x = x - 1;
+}

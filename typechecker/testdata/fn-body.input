@@ -1,0 +1,4 @@
+var fn = fun (firstName: string, lastName: string): string {
+	return firstName - lastName;
+};
+fn;
