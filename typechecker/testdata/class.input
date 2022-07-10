@@ -1,0 +1,8 @@
+class Greeter {
+    greet(): string {
+        return "hello";
+    }
+}
+
+var greeter: Greeter = Greeter();
+greeter;

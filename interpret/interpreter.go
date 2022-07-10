@@ -309,7 +309,7 @@ func (in *Interpreter) lookupVariable(name ast.Token, expr ast.Expr) (interface{
 	if distance, ok := in.GetLocalDistance(expr); ok {
 		return in.environment.GetAt(distance, name.Lexeme), nil
 	}
-	return in.globals.Get(name)
+	return in.globals.Get(name.Lexeme)
 }
 
 func (in *Interpreter) VisitBinaryExpr(expr ast.BinaryExpr) interface{} {

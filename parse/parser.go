@@ -649,7 +649,7 @@ func (p *Parser) error(token ast.Token, message string) {
 		where = " at '" + token.Lexeme + "'"
 	}
 
-	err := parseError{msg: fmt.Sprintf("[line %d] Error%s: %s\n", token.Line, where, message)}
+	err := parseError{msg: fmt.Sprintf("[line %d] Error%s: %s\n", token.Line+1, where, message)}
 	_, _ = p.stdErr.Write([]byte(err.Error()))
 	panic(err)
 }

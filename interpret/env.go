@@ -1,10 +1,15 @@
 package interpret
 
 import (
-	"fmt"
+	"errors"
 
 	"github.com/chidiwilliams/glox/ast"
 )
+
+// TODO: move this to an env package
+
+// ErrUndefined is returned when retrieving or assigning to an undefined variable
+var ErrUndefined = errors.New("undefined variable")
 
 type Environment struct {
 	Enclosing *Environment
@@ -29,14 +34,14 @@ func (e *Environment) Has(name string) bool {
 	return false
 }
 
-func (e *Environment) Get(name ast.Token) (interface{}, error) {
-	if val, ok := e.values[name.Lexeme]; ok {
+func (e *Environment) Get(name string) (interface{}, error) {
+	if val, ok := e.values[name]; ok {
 		return val, nil
 	}
 	if e.Enclosing != nil {
 		return e.Enclosing.Get(name)
 	}
-	return nil, runtimeError{name, fmt.Sprintf("Undefined variable '%s'", name.Lexeme)}
+	return nil, ErrUndefined
 }
 
 func (e *Environment) assign(name ast.Token, value interface{}) error {
@@ -47,7 +52,7 @@ func (e *Environment) assign(name ast.Token, value interface{}) error {
 	if e.Enclosing != nil {
 		return e.Enclosing.assign(name, value)
 	}
-	return runtimeError{name, fmt.Sprintf("Undefined variable '%s'", name.Lexeme)}
+	return ErrUndefined
 }
 
 func (e *Environment) GetAt(distance int, name string) interface{} {
