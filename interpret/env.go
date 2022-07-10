@@ -18,6 +18,17 @@ func (e *Environment) Define(name string, value interface{}) {
 	e.values[name] = value
 }
 
+func (e *Environment) Has(name string) bool {
+	_, ok := e.values[name]
+	if ok {
+		return true
+	}
+	if e.Enclosing != nil {
+		return e.Enclosing.Has(name)
+	}
+	return false
+}
+
 func (e *Environment) Get(name ast.Token) (interface{}, error) {
 	if val, ok := e.values[name.Lexeme]; ok {
 		return val, nil

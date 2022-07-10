@@ -12,8 +12,6 @@ const (
 	TokenRightBrace
 	TokenLeftBracket
 	TokenRightBracket
-	TokenLeftAngleBracket
-	TokenRightAngleBracket
 	TokenComma
 	TokenDot
 	TokenMinus
@@ -58,6 +56,8 @@ const (
 	TokenWhile
 	TokenBreak
 	TokenContinue
+
+	TokenTypeType
 
 	TokenEof
 )

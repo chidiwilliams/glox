@@ -234,6 +234,10 @@ type Return struct {
 	Value interface{}
 }
 
+func (in *Interpreter) VisitTypeDeclStmt(stmt ast.TypeDeclStmt) interface{} {
+	return nil
+}
+
 func (in *Interpreter) VisitReturnStmt(stmt ast.ReturnStmt) interface{} {
 	var value interface{}
 	if stmt.Value != nil {

@@ -1,0 +1,17 @@
+type int = number;
+type ID = int;
+type Index = ID;
+
+fun square(x: int): int {
+    return x * x;
+}
+
+var n: int = square(2);
+
+fun promote(userID: ID): ID {
+    return userID + 1;
+}
+
+var p: ID = promote(1);
+
+var x: Index = 1;

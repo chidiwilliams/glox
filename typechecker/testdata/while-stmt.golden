@@ -1,1 +1,1 @@
-expected 'number' type for {hello} in {{25 x %!s(<nil>)} 22 >= %!s(<nil>) {hello}}, but got 'string'
+expected 'number' type for {hello} in {{23 x %!s(<nil>)} 20 >= %!s(<nil>) {hello}}, but got 'string'

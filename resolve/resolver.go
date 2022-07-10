@@ -348,6 +348,10 @@ func (r *Resolver) VisitPrintStmt(stmt ast.PrintStmt) interface{} {
 	return nil
 }
 
+func (r *Resolver) VisitTypeDeclStmt(stmt ast.TypeDeclStmt) interface{} {
+	return nil
+}
+
 func (r *Resolver) VisitReturnStmt(stmt ast.ReturnStmt) interface{} {
 	if r.currentFunction == functionTypeNone {
 		r.error(stmt.Keyword, "Can't return from top-level code.")

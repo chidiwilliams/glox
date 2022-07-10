@@ -33,6 +33,9 @@ func (s primitiveType) String() string {
 }
 
 func (s primitiveType) Equals(t Type) bool {
+	if _, ok := t.(aliasType); ok {
+		return t.Equals(s)
+	}
 	return s == t
 }
 
@@ -44,20 +47,43 @@ var (
 )
 
 func newFunctionType(name string, paramTypes []Type, returnType Type) Type {
-	return typeFunction{name: name, paramTypes: paramTypes, returnType: returnType}
+	return functionType{name: name, paramTypes: paramTypes, returnType: returnType}
 }
 
-type typeFunction struct {
+type functionType struct {
 	name       string
 	paramTypes []Type
 	returnType Type
 }
 
-func (t typeFunction) Equals(t2 Type) bool {
-	return t.String() == t2.String()
+func (t functionType) Equals(t2 Type) bool {
+	if _, ok := t2.(aliasType); ok {
+		return t2.Equals(t)
+	}
+
+	fnType, ok := t2.(functionType)
+	if !ok {
+		return false
+	}
+
+	if !fnType.returnType.Equals(t.returnType) {
+		return false
+	}
+
+	if len(fnType.paramTypes) != len(t.paramTypes) {
+		return false
+	}
+
+	for i, paramType := range fnType.paramTypes {
+		if !paramType.Equals(t.paramTypes[i]) {
+			return false
+		}
+	}
+
+	return true
 }
 
-func (t typeFunction) String() string {
+func (t functionType) String() string {
 	if t.name != "" {
 		return t.name
 	}
@@ -77,12 +103,61 @@ func (t typeFunction) String() string {
 	return name
 }
 
+func newAliasType(name string, parent Type) aliasType {
+	return aliasType{name: name, parent: parent}
+}
+
+type aliasType struct {
+	name   string
+	parent Type
+}
+
+func (t aliasType) String() string {
+	return t.name
+}
+
+func (t aliasType) Equals(t2 Type) bool {
+	if t.String() == t2.String() {
+		return true
+	}
+	return t.parent.Equals(t2)
+}
+
+func NewTypeChecker(interpreter *interpret.Interpreter) *TypeChecker {
+	globals := interpret.Environment{}
+	globals.Define("clock", newFunctionType("", []Type{}, TypeNumber))
+
+	types := map[string]Type{
+		"number": TypeNumber,
+		"string": TypeString,
+		"bool":   TypeBoolean,
+		"nil":    TypeNil,
+	}
+	return &TypeChecker{env: &globals, globals: &globals, interpreter: interpreter, types: types}
+}
+
 type TypeChecker struct {
 	env                  *interpret.Environment
 	globals              *interpret.Environment
 	interpreter          *interpret.Interpreter
 	declaredFnReturnType Type
 	inferredFnReturnType Type
+	types                map[string]Type
+}
+
+func (c *TypeChecker) VisitTypeDeclStmt(stmt ast.TypeDeclStmt) interface{} {
+	if c.env.Has(stmt.Name.Lexeme) {
+		c.error(fmt.Sprintf("Type with name %s is already defined.", stmt.Name.Lexeme))
+	}
+
+	baseType := c.typeFromParsed(stmt.Base)
+	if baseType == nil {
+		c.error(fmt.Sprintf("Type %v is not defined", stmt.Base))
+	}
+
+	alias := newAliasType(stmt.Name.Lexeme, baseType)
+	c.types[stmt.Name.Lexeme] = alias
+	return alias
 }
 
 func (c *TypeChecker) VisitBlockStmt(stmt ast.BlockStmt) interface{} {
@@ -183,12 +258,6 @@ func (c *TypeChecker) VisitVarStmt(stmt ast.VarStmt) interface{} {
 	return nil
 }
 
-func NewTypeChecker(interpreter *interpret.Interpreter) *TypeChecker {
-	globals := interpret.Environment{}
-	globals.Define("clock", newFunctionType("", []Type{}, TypeNumber))
-	return &TypeChecker{env: &globals, globals: &globals, interpreter: interpreter}
-}
-
 func (c *TypeChecker) CheckStmts(stmts []ast.Stmt) (err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -245,7 +314,7 @@ func (c *TypeChecker) VisitBinaryExpr(expr ast.BinaryExpr) interface{} {
 func (c *TypeChecker) VisitCallExpr(expr ast.CallExpr) interface{} {
 	calleeType := c.check(expr.Callee)
 
-	fnType, ok := calleeType.(typeFunction)
+	fnType, ok := calleeType.(functionType)
 	if !ok {
 		panic(TypeError{message: "Cannot call a value that's not a function"})
 	}
@@ -267,7 +336,7 @@ func (c *TypeChecker) VisitFunctionExpr(expr ast.FunctionExpr) interface{} {
 	return c.checkFunction(expr.Name, expr.Params, expr.Body, expr.ReturnType, fnDeclEnv)
 }
 
-func (c *TypeChecker) checkFunction(name *ast.Token, params []ast.Param, body []ast.Stmt, parsedReturnType ast.Type, env *interpret.Environment) typeFunction {
+func (c *TypeChecker) checkFunction(name *ast.Token, params []ast.Param, body []ast.Stmt, parsedReturnType ast.Type, env *interpret.Environment) functionType {
 	// Predefine function type from signature for recursive calls
 	paramTypes := make([]Type, len(params))
 	for i, param := range params {
@@ -290,7 +359,7 @@ func (c *TypeChecker) checkFunction(name *ast.Token, params []ast.Param, body []
 		panic(TypeError{message: fmt.Sprintf("expected function %s to return %s, but got %s", body, parsedReturnType, inferredReturnType)})
 	}
 
-	return typeFunction{paramTypes: paramTypes, returnType: inferredReturnType}
+	return functionType{paramTypes: paramTypes, returnType: inferredReturnType}
 }
 
 func (c *TypeChecker) checkFunctionBody(fnBody []ast.Stmt, fnEnv interpret.Environment, declaredReturnType Type) Type {
@@ -387,14 +456,6 @@ func (c *TypeChecker) typeFromParsed(parsedType ast.Type) Type {
 	switch parsed := parsedType.(type) {
 	case ast.SingleType:
 		switch parsed.Name {
-		case "string":
-			return TypeString
-		case "number":
-			return TypeNumber
-		case "bool":
-			return TypeBoolean
-		case "nil":
-			return TypeNil
 		case "Fn":
 			// TODO: So many possible bugs here. Should assert on length of generic arguments.
 			// Should there actually be an ast.ArrayType?
@@ -409,9 +470,14 @@ func (c *TypeChecker) typeFromParsed(parsedType ast.Type) Type {
 			returnType := c.typeFromParsed(parsedReturnType)
 
 			return newFunctionType("", paramTypes, returnType)
+		default:
+			t, ok := c.types[parsed.Name]
+			if ok {
+				return t
+			}
 		}
 	}
-	panic(TypeError{message: "Unknown type for expression."})
+	return nil
 }
 
 func (c *TypeChecker) expect(actual Type, expected Type, value ast.Expr, expr ast.Expr) Type {
@@ -432,7 +498,7 @@ func (c *TypeChecker) getOperandTypesForOperator(operator ast.Token) []Type {
 
 func (c *TypeChecker) expectOperatorType(inputType Type, allowedTypes []Type, expr ast.Expr) {
 	for _, allowedType := range allowedTypes {
-		if allowedType == inputType {
+		if allowedType.Equals(inputType) {
 			return
 		}
 	}

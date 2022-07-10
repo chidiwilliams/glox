@@ -38,6 +38,7 @@ func main() {
 		"Continue   : ",
 		"Break      : ",
 		"Var        : Name Token, Initializer Expr, TypeDecl Type",
+		"TypeDecl   : Name Token, Base Type",
 	})
 }
 

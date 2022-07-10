@@ -101,6 +101,15 @@ func (b VarStmt) Accept(visitor StmtVisitor) interface{} {
 	return visitor.VisitVarStmt(b)
 }
 
+type TypeDeclStmt struct {
+	Name Token
+	Base Type
+}
+
+func (b TypeDeclStmt) Accept(visitor StmtVisitor) interface{} {
+	return visitor.VisitTypeDeclStmt(b)
+}
+
 type StmtVisitor interface {
 	VisitBlockStmt(stmt BlockStmt) interface{}
 	VisitClassStmt(stmt ClassStmt) interface{}
@@ -113,4 +122,5 @@ type StmtVisitor interface {
 	VisitContinueStmt(stmt ContinueStmt) interface{}
 	VisitBreakStmt(stmt BreakStmt) interface{}
 	VisitVarStmt(stmt VarStmt) interface{}
+	VisitTypeDeclStmt(stmt TypeDeclStmt) interface{}
 }

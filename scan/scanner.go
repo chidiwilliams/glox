@@ -248,6 +248,7 @@ var keywords = map[string]ast.TokenType{
 	"while":    ast.TokenWhile,
 	"break":    ast.TokenBreak,
 	"continue": ast.TokenContinue,
+	"type":     ast.TokenTypeType,
 }
 
 func (s *Scanner) identifier() {

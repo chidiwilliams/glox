@@ -34,7 +34,7 @@ func NewParser(tokens []ast.Token, stdErr io.Writer) *Parser {
 Parser grammar:
 
 	program      => declaration* EOF
-	declaration  => classDecl | funcDecl | varDecl | statement
+	declaration  => classDecl | funcDecl | varDecl | typeDecl | statement
 	classDecl    => "class" IDENTIFIER ( "<" IDENTIFIER )? "{" method* "}"
 	method       => IDENTIFIER parameterList? ( ":" type )? block
 	funDecl      => "fun" function
@@ -43,6 +43,7 @@ Parser grammar:
 	varDecl      => "var" IDENTIFIER ( ":" type )? ( "=" expression )? ";"
 	type         => "[" type ( "," type )* "]"
                   | IDENTIFIER ( "<" type ( "," type )* ">" )?
+	typeDecl     => "type" IDENTIFIER "=" type ";"
 	statement    => exprStmt | ifStmt | forStmt | printStmt | returnStmt | whileStmt
 									| breakStmt | continueStmt | block
 	exprStmt     => expression ";"
@@ -110,6 +111,9 @@ func (p *Parser) declaration() ast.Stmt {
 	if p.match(ast.TokenVar) {
 		return p.varDeclaration()
 	}
+	if p.match(ast.TokenTypeType) {
+		return p.typeDeclaration()
+	}
 	return p.statement()
 }
 
@@ -146,6 +150,14 @@ func (p *Parser) varDeclaration() ast.Stmt {
 	}
 	p.consume(ast.TokenSemicolon, "Expect ';' after variable declaration")
 	return ast.VarStmt{Name: name, Initializer: initializer, TypeDecl: typeDecl}
+}
+
+func (p *Parser) typeDeclaration() ast.Stmt {
+	name := p.consume(ast.TokenIdentifier, "Expect type name")
+	p.consume(ast.TokenEqual, "Expect '=' after type name")
+	base := p.typeAnnotation()
+	p.consume(ast.TokenSemicolon, "Expect ';' after type declaration")
+	return ast.TypeDeclStmt{Name: name, Base: base}
 }
 
 func (p *Parser) typeAnnotation() ast.Type {
