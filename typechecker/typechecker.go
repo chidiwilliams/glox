@@ -8,190 +8,17 @@ import (
 	"github.com/chidiwilliams/glox/interpret"
 )
 
-type TypeError struct {
-	message string
-}
-
-func (e TypeError) Error() string {
-	return e.message
-}
-
-type Type interface {
-	String() string
-	Equals(t Type) bool
-}
-
-type primitiveType struct {
-	name string
-}
-
-func newPrimitiveType(name string) Type {
-	return primitiveType{name: name}
-}
-
-func (s primitiveType) String() string {
-	return s.name
-}
-
-func (s primitiveType) Equals(t Type) bool {
-	if _, ok := t.(aliasType); ok {
-		return t.Equals(s)
-	}
-	return s == t
-}
-
-var (
-	TypeNumber  = newPrimitiveType("number")
-	TypeString  = newPrimitiveType("string")
-	TypeBoolean = newPrimitiveType("boolean")
-	TypeNil     = newPrimitiveType("nil")
-)
-
-func newFunctionType(name string, paramTypes []Type, returnType Type) functionType {
-	return functionType{name: name, paramTypes: paramTypes, returnType: returnType}
-}
-
-type functionType struct {
-	name       string
-	paramTypes []Type
-	returnType Type
-}
-
-func (t functionType) Equals(t2 Type) bool {
-	if _, ok := t2.(aliasType); ok {
-		return t2.Equals(t)
-	}
-
-	fnType, ok := t2.(functionType)
-	if !ok {
-		return false
-	}
-
-	if !fnType.returnType.Equals(t.returnType) {
-		return false
-	}
-
-	if len(fnType.paramTypes) != len(t.paramTypes) {
-		return false
-	}
-
-	for i, paramType := range fnType.paramTypes {
-		if !paramType.Equals(t.paramTypes[i]) {
-			return false
-		}
-	}
-
-	return true
-}
-
-func (t functionType) String() string {
-	if t.name != "" {
-		return t.name
-	}
-
-	name := "Fn<"
-
-	name += "["
-	for i, paramType := range t.paramTypes {
-		if i > 0 {
-			name += ","
-		}
-		name += paramType.String()
-	}
-	name += "], "
-	name += t.returnType.String()
-	name += ">"
-	return name
-}
-
-func newAliasType(name string, parent Type) Type {
-	return aliasType{name: name, parent: parent}
-}
-
-type aliasType struct {
-	name   string
-	parent Type
-}
-
-func (t aliasType) String() string {
-	return t.name
-}
-
-func (t aliasType) Equals(t2 Type) bool {
-	if t.String() == t2.String() {
-		return true
-	}
-	return t.parent.Equals(t2)
-}
-
-type classType struct {
-	name       string
-	superClass Type
-	env        *env.Environment
-}
-
-func (c classType) String() string {
-	return c.name
-}
-
-func (c classType) Equals(t Type) bool {
-	if c == t {
-		return true
-	}
-
-	if alias, ok := t.(aliasType); ok {
-		return alias.Equals(c)
-	}
-
-	if c.superClass != nil {
-		return c.superClass.Equals(t)
-	}
-
-	return false
-}
-
-func (c classType) getField(name string) (Type, error) {
-	fieldType, err := c.env.Get(name)
-	if err != nil {
-		return nil, err
-	}
-	return fieldType.(Type), nil
-}
-
-func (c classType) getConstructor() (functionType, error) {
-	constructor, err := c.getField("init")
-	if err == env.ErrUndefined {
-		return newFunctionType("", []Type{}, c), nil
-	} else if err != nil {
-		return functionType{}, err
-	}
-	return constructor.(functionType), nil
-}
-
-func newClassType(name string, superClass Type) classType {
-	var enclosingEnv *env.Environment
-	if superClassAsClassType, ok := superClass.(classType); ok {
-		enclosingEnv = superClassAsClassType.env
-	}
-
-	environment := env.New(enclosingEnv)
-	return classType{
-		name:       name,
-		superClass: superClass,
-		env:        &environment,
-	}
-}
-
 func NewTypeChecker(interpreter *interpret.Interpreter) *TypeChecker {
 	globals := env.New(nil)
-	globals.Define("clock", newFunctionType("", []Type{}, TypeNumber))
+	globals.Define("clock", newFunctionType("", []loxType{}, typeNumber))
 
-	types := map[string]Type{
-		"number": TypeNumber,
-		"string": TypeString,
-		"bool":   TypeBoolean,
-		"nil":    TypeNil,
+	types := map[string]loxType{
+		"number": typeNumber,
+		"string": typeString,
+		"bool":   typeBoolean,
+		"nil":    typeNil,
 	}
+
 	return &TypeChecker{env: &globals, globals: &globals, interpreter: interpreter, types: types}
 }
 
@@ -199,9 +26,9 @@ type TypeChecker struct {
 	env                  *env.Environment
 	globals              *env.Environment
 	interpreter          *interpret.Interpreter
-	declaredFnReturnType Type
-	inferredFnReturnType Type
-	types                map[string]Type
+	declaredFnReturnType loxType
+	inferredFnReturnType loxType
+	types                map[string]loxType
 	enclosingClass       classType
 }
 
@@ -239,7 +66,7 @@ func (c *TypeChecker) checkBlock(stmts []ast.Stmt, env env.Environment) {
 }
 
 func (c *TypeChecker) VisitClassStmt(stmt ast.ClassStmt) interface{} {
-	var superclassType Type
+	var superclassType loxType
 	if stmt.Superclass != nil {
 		superclassType = c.check(stmt.Superclass)
 	}
@@ -280,7 +107,7 @@ func (c *TypeChecker) VisitFunctionStmt(stmt ast.FunctionStmt) interface{} {
 
 func (c *TypeChecker) VisitIfStmt(stmt ast.IfStmt) interface{} {
 	conditionType := c.check(stmt.Condition)
-	c.expect(conditionType, TypeBoolean, stmt.Condition, stmt.Condition)
+	c.expect(conditionType, typeBoolean, stmt.Condition, stmt.Condition)
 
 	c.checkStmt(stmt.ThenBranch)
 	if stmt.ElseBranch != nil {
@@ -295,13 +122,13 @@ func (c *TypeChecker) VisitPrintStmt(stmt ast.PrintStmt) interface{} {
 }
 
 func (c *TypeChecker) VisitReturnStmt(stmt ast.ReturnStmt) interface{} {
-	returnType := TypeNil
+	returnType := typeNil
 	if stmt.Value != nil {
 		returnType = c.check(stmt.Value)
 	}
 
-	if c.declaredFnReturnType != nil && !c.declaredFnReturnType.Equals(returnType) {
-		panic(TypeError{message: fmt.Sprintf("expected enclosing function to return '%s', but got '%s'", c.declaredFnReturnType, returnType)})
+	if c.declaredFnReturnType != nil && !c.declaredFnReturnType.equals(returnType) {
+		panic(typeError{message: fmt.Sprintf("expected enclosing function to return '%s', but got '%s'", c.declaredFnReturnType, returnType)})
 	}
 
 	// For now there's no union type, so without the declared annotation, the function's return type
@@ -315,7 +142,7 @@ func (c *TypeChecker) VisitReturnStmt(stmt ast.ReturnStmt) interface{} {
 
 func (c *TypeChecker) VisitWhileStmt(stmt ast.WhileStmt) interface{} {
 	conditionType := c.check(stmt.Condition)
-	c.expect(conditionType, TypeBoolean, stmt.Condition, stmt.Condition)
+	c.expect(conditionType, typeBoolean, stmt.Condition, stmt.Condition)
 	c.checkStmt(stmt.Body)
 	return nil
 }
@@ -347,7 +174,7 @@ func (c *TypeChecker) VisitVarStmt(stmt ast.VarStmt) interface{} {
 func (c *TypeChecker) CheckStmts(stmts []ast.Stmt) (err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			if typeErr, ok := recovered.(TypeError); ok {
+			if typeErr, ok := recovered.(typeError); ok {
 				err = typeErr
 			} else {
 				panic(recovered)
@@ -362,8 +189,8 @@ func (c *TypeChecker) CheckStmts(stmts []ast.Stmt) (err error) {
 	return nil
 }
 
-func (c *TypeChecker) check(expr ast.Expr) Type {
-	return expr.Accept(c).(Type)
+func (c *TypeChecker) check(expr ast.Expr) loxType {
+	return expr.Accept(c).(loxType)
 }
 
 func (c *TypeChecker) checkStmt(stmt ast.Stmt) {
@@ -374,7 +201,7 @@ func (c *TypeChecker) VisitAssignExpr(expr ast.AssignExpr) interface{} {
 	valueType := c.check(expr.Value)
 	varType, err := c.lookupType(expr.Name, expr)
 	if err != nil {
-		panic(TypeError{message: err.Error()})
+		panic(typeError{message: err.Error()})
 	}
 
 	c.expect(valueType, varType, expr.Value, expr)
@@ -404,17 +231,17 @@ func (c *TypeChecker) VisitCallExpr(expr ast.CallExpr) interface{} {
 	case classType:
 		constructor, err := calleeType.getConstructor()
 		if err != nil {
-			panic(TypeError{message: err.Error()})
+			panic(typeError{message: err.Error()})
 		}
 		return c.checkFunctionCall(constructor, expr)
 	default:
-		panic(TypeError{message: "Cannot call a value that is not a function or method"})
+		panic(typeError{message: "Cannot call a value that is not a function or method"})
 	}
 }
 
-func (c *TypeChecker) checkFunctionCall(calleeType functionType, expr ast.CallExpr) Type {
+func (c *TypeChecker) checkFunctionCall(calleeType functionType, expr ast.CallExpr) loxType {
 	if len(calleeType.paramTypes) != len(expr.Arguments) {
-		panic(TypeError{message: fmt.Sprintf("function of type %s expects %d arguments, got %d", calleeType, len(calleeType.paramTypes), len(expr.Arguments))})
+		panic(typeError{message: fmt.Sprintf("function of type %s expects %d arguments, got %d", calleeType, len(calleeType.paramTypes), len(expr.Arguments))})
 	}
 
 	for i, arg := range expr.Arguments {
@@ -432,7 +259,7 @@ func (c *TypeChecker) VisitFunctionExpr(expr ast.FunctionExpr) interface{} {
 
 func (c *TypeChecker) checkFunction(name *ast.Token, params []ast.Param, body []ast.Stmt, parsedReturnType ast.Type, enclosingEnv *env.Environment) functionType {
 	// Predefine function type from signature for recursive calls
-	paramTypes := make([]Type, len(params))
+	paramTypes := make([]loxType, len(params))
 	for i, param := range params {
 		paramTypes[i] = c.typeFromParsed(param.Type)
 	}
@@ -449,14 +276,14 @@ func (c *TypeChecker) checkFunction(name *ast.Token, params []ast.Param, body []
 
 	inferredReturnType := c.checkFunctionBody(body, fnEnv, returnType)
 
-	if parsedReturnType != nil && !inferredReturnType.Equals(returnType) {
-		panic(TypeError{message: fmt.Sprintf("expected function %s to return %s, but got %s", body, parsedReturnType, inferredReturnType)})
+	if parsedReturnType != nil && !inferredReturnType.equals(returnType) {
+		panic(typeError{message: fmt.Sprintf("expected function %s to return %s, but got %s", body, parsedReturnType, inferredReturnType)})
 	}
 
 	return functionType{paramTypes: paramTypes, returnType: inferredReturnType}
 }
 
-func (c *TypeChecker) checkFunctionBody(fnBody []ast.Stmt, fnEnv env.Environment, declaredReturnType Type) Type {
+func (c *TypeChecker) checkFunctionBody(fnBody []ast.Stmt, fnEnv env.Environment, declaredReturnType loxType) loxType {
 	previousEnclosingFnReturnType := c.declaredFnReturnType
 	defer func() { c.declaredFnReturnType = previousEnclosingFnReturnType }()
 
@@ -481,13 +308,13 @@ func (c *TypeChecker) VisitGroupingExpr(expr ast.GroupingExpr) interface{} {
 func (c *TypeChecker) VisitLiteralExpr(expr ast.LiteralExpr) interface{} {
 	switch expr.Value.(type) {
 	case string:
-		return TypeString
+		return typeString
 	case float64:
-		return TypeNumber
+		return typeNumber
 	case bool:
-		return TypeBoolean
+		return typeBoolean
 	}
-	panic(TypeError{message: "unable to determine expression type"})
+	panic(typeError{message: "unable to determine expression type"})
 }
 
 func (c *TypeChecker) VisitLogicalExpr(expr ast.LogicalExpr) interface{} {
@@ -514,7 +341,7 @@ func (c *TypeChecker) VisitThisExpr(expr ast.ThisExpr) interface{} {
 
 func (c *TypeChecker) VisitTernaryExpr(expr ast.TernaryExpr) interface{} {
 	conditionType := c.check(expr.Cond)
-	c.expect(conditionType, TypeBoolean, expr.Cond, expr)
+	c.expect(conditionType, typeBoolean, expr.Cond, expr)
 
 	consequentType := c.check(expr.Consequent)
 	alternateType := c.check(expr.Alternate)
@@ -531,24 +358,24 @@ func (c *TypeChecker) VisitUnaryExpr(expr ast.UnaryExpr) interface{} {
 func (c *TypeChecker) VisitVariableExpr(expr ast.VariableExpr) interface{} {
 	exprType, err := c.lookupType(expr.Name, expr)
 	if err != nil {
-		panic(TypeError{message: err.Error()})
+		panic(typeError{message: err.Error()})
 	}
 	return exprType
 }
 
-func (c *TypeChecker) lookupType(name ast.Token, expr ast.Expr) (Type, error) {
+func (c *TypeChecker) lookupType(name ast.Token, expr ast.Expr) (loxType, error) {
 	// If the variable is a local variable, find it in the resolved enclosing scope
 	if distance, ok := c.interpreter.GetLocalDistance(expr); ok {
-		return c.env.GetAt(distance, name.Lexeme).(Type), nil
+		return c.env.GetAt(distance, name.Lexeme).(loxType), nil
 	}
 	nameType, err := c.globals.Get(name.Lexeme)
 	if err != nil {
 		return nil, err
 	}
-	return nameType.(Type), nil
+	return nameType.(loxType), nil
 }
 
-func (c *TypeChecker) typeFromParsed(parsedType ast.Type) Type {
+func (c *TypeChecker) typeFromParsed(parsedType ast.Type) loxType {
 	switch parsed := parsedType.(type) {
 	case ast.SingleType:
 		switch parsed.Name {
@@ -557,7 +384,7 @@ func (c *TypeChecker) typeFromParsed(parsedType ast.Type) Type {
 			// Should there actually be an ast.ArrayType?
 			parsedParamTypes := parsed.GenericArgs[0].(ast.ArrayType).Types
 
-			paramTypes := make([]Type, len(parsedParamTypes))
+			paramTypes := make([]loxType, len(parsedParamTypes))
 			for i, parsedParamType := range parsedParamTypes {
 				paramTypes[i] = c.typeFromParsed(parsedParamType)
 			}
@@ -576,25 +403,25 @@ func (c *TypeChecker) typeFromParsed(parsedType ast.Type) Type {
 	return nil
 }
 
-func (c *TypeChecker) expect(actual Type, expected Type, value ast.Expr, expr ast.Expr) Type {
-	if !actual.Equals(expected) {
+func (c *TypeChecker) expect(actual loxType, expected loxType, value ast.Expr, expr ast.Expr) loxType {
+	if !actual.equals(expected) {
 		c.error(fmt.Sprintf("error on line %d: expected '%s' type, but got '%s'", value.StartLine()+1, expected.String(), actual.String()))
 	}
 	return actual
 }
 
-func (c *TypeChecker) getOperandTypesForOperator(operator ast.Token) []Type {
+func (c *TypeChecker) getOperandTypesForOperator(operator ast.Token) []loxType {
 	switch operator.Lexeme {
 	case "+":
-		return []Type{TypeNumber, TypeString}
+		return []loxType{typeNumber, typeString}
 	default:
-		return []Type{TypeNumber}
+		return []loxType{typeNumber}
 	}
 }
 
-func (c *TypeChecker) expectOperatorType(inputType Type, allowedTypes []Type, expr ast.Expr) {
+func (c *TypeChecker) expectOperatorType(inputType loxType, allowedTypes []loxType, expr ast.Expr) {
 	for _, allowedType := range allowedTypes {
-		if allowedType.Equals(inputType) {
+		if allowedType.equals(inputType) {
 			return
 		}
 	}
@@ -602,7 +429,7 @@ func (c *TypeChecker) expectOperatorType(inputType Type, allowedTypes []Type, ex
 }
 
 func (c *TypeChecker) error(message string) {
-	panic(TypeError{message: message})
+	panic(typeError{message: message})
 }
 
 func (c *TypeChecker) isBooleanBinary(operator ast.Token) bool {
@@ -621,5 +448,5 @@ func (c *TypeChecker) checkBooleanBinaryExpr(expr ast.BinaryExpr) interface{} {
 	rightType := c.check(expr.Right)
 
 	c.expect(rightType, leftType, expr.Right, expr)
-	return TypeBoolean
+	return typeBoolean
 }
