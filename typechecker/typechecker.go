@@ -482,7 +482,7 @@ func (c *TypeChecker) typeFromParsed(parsedType ast.Type) Type {
 
 func (c *TypeChecker) expect(actual Type, expected Type, value ast.Expr, expr ast.Expr) Type {
 	if !actual.Equals(expected) {
-		c.error(fmt.Sprintf("expected '%s' type for %s in %s, but got '%s'", expected.String(), value, expr, actual.String()))
+		c.error(fmt.Sprintf("error on line %d: expected '%s' type, but got '%s'", value.StartLine()+1, expected.String(), actual.String()))
 	}
 	return actual
 }

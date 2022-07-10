@@ -1,1 +1,1 @@
-expected 'number' type for {hello} in {23 x %!s(<nil>) {hello}}, but got 'string'
+error on line 2: expected 'number' type, but got 'string'

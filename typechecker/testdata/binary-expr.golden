@@ -1,1 +1,1 @@
-expected 'string' type for {{{23 x %!s(<nil>)} 12 * %!s(<nil>) {%!s(float64=10)}} 9 + %!s(<nil>) {23 y %!s(<nil>)}} in {{{23 x %!s(<nil>)} 12 * %!s(<nil>) {%!s(float64=10)}} 9 + %!s(<nil>) {23 y %!s(<nil>)}}, but got 'number'
+error on line 3: expected 'string' type, but got 'number'

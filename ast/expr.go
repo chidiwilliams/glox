@@ -2,11 +2,23 @@ package ast
 
 type Expr interface {
 	Accept(visitor ExprVisitor) interface{}
+	StartLine() int
+	EndLine() int
 }
 
 type AssignExpr struct {
 	Name  Token
 	Value Expr
+}
+
+func (b AssignExpr) StartLine() int {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (b AssignExpr) EndLine() int {
+	// TODO implement me
+	panic("implement me")
 }
 
 func (b AssignExpr) Accept(visitor ExprVisitor) interface{} {
@@ -19,6 +31,14 @@ type BinaryExpr struct {
 	Right    Expr
 }
 
+func (b BinaryExpr) StartLine() int {
+	return b.Left.StartLine()
+}
+
+func (b BinaryExpr) EndLine() int {
+	return b.Right.EndLine()
+}
+
 func (b BinaryExpr) Accept(visitor ExprVisitor) interface{} {
 	return visitor.VisitBinaryExpr(b)
 }
@@ -27,6 +47,16 @@ type CallExpr struct {
 	Callee    Expr
 	Paren     Token
 	Arguments []Expr
+}
+
+func (b CallExpr) StartLine() int {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (b CallExpr) EndLine() int {
+	// TODO implement me
+	panic("implement me")
 }
 
 func (b CallExpr) Accept(visitor ExprVisitor) interface{} {
@@ -40,6 +70,16 @@ type FunctionExpr struct {
 	ReturnType Type
 }
 
+func (b FunctionExpr) StartLine() int {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (b FunctionExpr) EndLine() int {
+	// TODO implement me
+	panic("implement me")
+}
+
 func (b FunctionExpr) Accept(visitor ExprVisitor) interface{} {
 	return visitor.VisitFunctionExpr(b)
 }
@@ -47,6 +87,16 @@ func (b FunctionExpr) Accept(visitor ExprVisitor) interface{} {
 type GetExpr struct {
 	Object Expr
 	Name   Token
+}
+
+func (b GetExpr) StartLine() int {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (b GetExpr) EndLine() int {
+	// TODO implement me
+	panic("implement me")
 }
 
 func (b GetExpr) Accept(visitor ExprVisitor) interface{} {
@@ -57,12 +107,30 @@ type GroupingExpr struct {
 	Expression Expr
 }
 
+func (b GroupingExpr) StartLine() int {
+	return b.Expression.StartLine()
+}
+
+func (b GroupingExpr) EndLine() int {
+	return b.Expression.EndLine()
+}
+
 func (b GroupingExpr) Accept(visitor ExprVisitor) interface{} {
 	return visitor.VisitGroupingExpr(b)
 }
 
 type LiteralExpr struct {
-	Value interface{}
+	Value     interface{}
+	LineStart int
+	LineEnd   int
+}
+
+func (b LiteralExpr) StartLine() int {
+	return b.LineStart
+}
+
+func (b LiteralExpr) EndLine() int {
+	return b.LineEnd
 }
 
 func (b LiteralExpr) Accept(visitor ExprVisitor) interface{} {
@@ -75,6 +143,16 @@ type LogicalExpr struct {
 	Right    Expr
 }
 
+func (b LogicalExpr) StartLine() int {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (b LogicalExpr) EndLine() int {
+	// TODO implement me
+	panic("implement me")
+}
+
 func (b LogicalExpr) Accept(visitor ExprVisitor) interface{} {
 	return visitor.VisitLogicalExpr(b)
 }
@@ -83,6 +161,16 @@ type SetExpr struct {
 	Object Expr
 	Name   Token
 	Value  Expr
+}
+
+func (b SetExpr) StartLine() int {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (b SetExpr) EndLine() int {
+	// TODO implement me
+	panic("implement me")
 }
 
 func (b SetExpr) Accept(visitor ExprVisitor) interface{} {
@@ -94,12 +182,32 @@ type SuperExpr struct {
 	Method  Token
 }
 
+func (b SuperExpr) StartLine() int {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (b SuperExpr) EndLine() int {
+	// TODO implement me
+	panic("implement me")
+}
+
 func (b SuperExpr) Accept(visitor ExprVisitor) interface{} {
 	return visitor.VisitSuperExpr(b)
 }
 
 type ThisExpr struct {
 	Keyword Token
+}
+
+func (b ThisExpr) StartLine() int {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (b ThisExpr) EndLine() int {
+	// TODO implement me
+	panic("implement me")
 }
 
 func (b ThisExpr) Accept(visitor ExprVisitor) interface{} {
@@ -112,6 +220,16 @@ type TernaryExpr struct {
 	Alternate  Expr
 }
 
+func (b TernaryExpr) StartLine() int {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (b TernaryExpr) EndLine() int {
+	// TODO implement me
+	panic("implement me")
+}
+
 func (b TernaryExpr) Accept(visitor ExprVisitor) interface{} {
 	return visitor.VisitTernaryExpr(b)
 }
@@ -121,12 +239,30 @@ type UnaryExpr struct {
 	Right    Expr
 }
 
+func (b UnaryExpr) StartLine() int {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (b UnaryExpr) EndLine() int {
+	// TODO implement me
+	panic("implement me")
+}
+
 func (b UnaryExpr) Accept(visitor ExprVisitor) interface{} {
 	return visitor.VisitUnaryExpr(b)
 }
 
 type VariableExpr struct {
 	Name Token
+}
+
+func (b VariableExpr) StartLine() int {
+	return b.Name.Line
+}
+
+func (b VariableExpr) EndLine() int {
+	return b.Name.Line
 }
 
 func (b VariableExpr) Accept(visitor ExprVisitor) interface{} {

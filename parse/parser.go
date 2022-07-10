@@ -118,6 +118,7 @@ func (p *Parser) declaration() ast.Stmt {
 }
 
 func (p *Parser) classDeclaration() ast.Stmt {
+	lineStart := p.previous().Line
 	name := p.consume(ast.TokenIdentifier, "Expect class name.")
 
 	var superclass *ast.VariableExpr
@@ -135,7 +136,14 @@ func (p *Parser) classDeclaration() ast.Stmt {
 	}
 
 	p.consume(ast.TokenRightBrace, "Expect '}' after class body.")
-	return ast.ClassStmt{Name: name, Methods: methods, Superclass: superclass}
+
+	return ast.ClassStmt{
+		Name:       name,
+		Methods:    methods,
+		Superclass: superclass,
+		LineStart:  lineStart,
+		LineEnd:    p.previous().Line,
+	}
 }
 
 func (p *Parser) varDeclaration() ast.Stmt {
@@ -543,13 +551,13 @@ func (p *Parser) finishCall(callee ast.Expr) ast.Expr {
 func (p *Parser) primary() ast.Expr {
 	switch {
 	case p.match(ast.TokenFalse):
-		return ast.LiteralExpr{Value: false}
+		return p.literalAtCurrentLine(false)
 	case p.match(ast.TokenTrue):
-		return ast.LiteralExpr{Value: true}
+		return p.literalAtCurrentLine(true)
 	case p.match(ast.TokenNil):
-		return ast.LiteralExpr{}
+		return p.literalAtCurrentLine(nil)
 	case p.match(ast.TokenNumber, ast.TokenString):
-		return ast.LiteralExpr{Value: p.previous().Literal}
+		return p.literalAtCurrentLine(p.previous().Literal)
 	case p.match(ast.TokenLeftParen):
 		expr := p.expression()
 		p.consume(ast.TokenRightParen, "Expect ')' after expression.")
@@ -569,6 +577,11 @@ func (p *Parser) primary() ast.Expr {
 
 	p.error(p.peek(), "Expect expression.")
 	return nil
+}
+
+func (p *Parser) literalAtCurrentLine(value interface{}) ast.LiteralExpr {
+	// TODO: How about multi-line strings? Is that supported? If yes, get the correct value for LineEnd
+	return ast.LiteralExpr{Value: value, LineStart: p.previous().Line, LineEnd: p.previous().Line}
 }
 
 // functionExpression parses a function expression.

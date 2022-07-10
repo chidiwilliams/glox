@@ -1,1 +1,1 @@
-expected 'number' type for {hello} in {{23 addThree %!s(<nil>)} 1 ) %!s(<nil>) [{%!s(float64=1)} {hello} {%!s(float64=3)}]}, but got 'string'
+error on line 5: expected 'number' type, but got 'string'
