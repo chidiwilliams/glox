@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/chidiwilliams/glox/ast"
@@ -39,10 +40,10 @@ func TestTypeChecker_CheckStmts(t *testing.T) {
 			if err != nil {
 				t.Fatal("error reading golden file", err)
 			}
-			wantErr := string(want)
+			wantErr := strings.Trim(string(want), "\n")
 
 			if typeErr != nil && wantErr == "" ||
-				typeErr != nil && typeErr.Error()+"\n" != wantErr ||
+				typeErr != nil && typeErr.Error() != wantErr ||
 				typeErr == nil && wantErr != "" {
 				t.Errorf("Check() error = %v, want %v", strconv.Quote(typeErr.Error()), strconv.Quote(wantErr))
 			}
