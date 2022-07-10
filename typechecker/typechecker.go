@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/chidiwilliams/glox/ast"
+	"github.com/chidiwilliams/glox/env"
 	"github.com/chidiwilliams/glox/interpret"
 )
 
@@ -126,7 +127,7 @@ func (t aliasType) Equals(t2 Type) bool {
 type classType struct {
 	name       string
 	superClass Type
-	env        *interpret.Environment
+	env        *env.Environment
 }
 
 func (c classType) String() string {
@@ -159,7 +160,7 @@ func (c classType) getField(name string) (Type, error) {
 
 func (c classType) getConstructor() (functionType, error) {
 	constructor, err := c.getField("init")
-	if err == interpret.ErrUndefined {
+	if err == env.ErrUndefined {
 		return newFunctionType("", []Type{}, c), nil
 	} else if err != nil {
 		return functionType{}, err
@@ -168,19 +169,21 @@ func (c classType) getConstructor() (functionType, error) {
 }
 
 func newClassType(name string, superClass Type) classType {
-	var enclosingEnv *interpret.Environment
+	var enclosingEnv *env.Environment
 	if superClassAsClassType, ok := superClass.(classType); ok {
 		enclosingEnv = superClassAsClassType.env
 	}
+
+	environment := env.New(enclosingEnv)
 	return classType{
 		name:       name,
 		superClass: superClass,
-		env:        &interpret.Environment{Enclosing: enclosingEnv},
+		env:        &environment,
 	}
 }
 
 func NewTypeChecker(interpreter *interpret.Interpreter) *TypeChecker {
-	globals := interpret.Environment{}
+	globals := env.New(nil)
 	globals.Define("clock", newFunctionType("", []Type{}, TypeNumber))
 
 	types := map[string]Type{
@@ -193,8 +196,8 @@ func NewTypeChecker(interpreter *interpret.Interpreter) *TypeChecker {
 }
 
 type TypeChecker struct {
-	env                  *interpret.Environment
-	globals              *interpret.Environment
+	env                  *env.Environment
+	globals              *env.Environment
 	interpreter          *interpret.Interpreter
 	declaredFnReturnType Type
 	inferredFnReturnType Type
@@ -218,11 +221,11 @@ func (c *TypeChecker) VisitTypeDeclStmt(stmt ast.TypeDeclStmt) interface{} {
 }
 
 func (c *TypeChecker) VisitBlockStmt(stmt ast.BlockStmt) interface{} {
-	c.checkBlock(stmt.Statements, interpret.Environment{Enclosing: c.env})
+	c.checkBlock(stmt.Statements, env.New(c.env))
 	return nil
 }
 
-func (c *TypeChecker) checkBlock(stmts []ast.Stmt, env interpret.Environment) {
+func (c *TypeChecker) checkBlock(stmts []ast.Stmt, env env.Environment) {
 	// Restore the current environment after executing the block
 	previous := c.env
 	defer func() {
@@ -423,11 +426,11 @@ func (c *TypeChecker) checkFunctionCall(calleeType functionType, expr ast.CallEx
 }
 
 func (c *TypeChecker) VisitFunctionExpr(expr ast.FunctionExpr) interface{} {
-	fnDeclEnv := &interpret.Environment{Enclosing: c.env}
-	return c.checkFunction(expr.Name, expr.Params, expr.Body, expr.ReturnType, fnDeclEnv)
+	fnDeclEnv := env.New(c.env)
+	return c.checkFunction(expr.Name, expr.Params, expr.Body, expr.ReturnType, &fnDeclEnv)
 }
 
-func (c *TypeChecker) checkFunction(name *ast.Token, params []ast.Param, body []ast.Stmt, parsedReturnType ast.Type, env *interpret.Environment) functionType {
+func (c *TypeChecker) checkFunction(name *ast.Token, params []ast.Param, body []ast.Stmt, parsedReturnType ast.Type, enclosingEnv *env.Environment) functionType {
 	// Predefine function type from signature for recursive calls
 	paramTypes := make([]Type, len(params))
 	for i, param := range params {
@@ -439,7 +442,7 @@ func (c *TypeChecker) checkFunction(name *ast.Token, params []ast.Param, body []
 		c.env.Define(name.Lexeme, newFunctionType("", paramTypes, returnType))
 	}
 
-	fnEnv := interpret.Environment{Enclosing: env}
+	fnEnv := env.New(enclosingEnv)
 	for i, param := range params {
 		fnEnv.Define(param.Token.Lexeme, paramTypes[i])
 	}
@@ -453,7 +456,7 @@ func (c *TypeChecker) checkFunction(name *ast.Token, params []ast.Param, body []
 	return functionType{paramTypes: paramTypes, returnType: inferredReturnType}
 }
 
-func (c *TypeChecker) checkFunctionBody(fnBody []ast.Stmt, fnEnv interpret.Environment, declaredReturnType Type) Type {
+func (c *TypeChecker) checkFunctionBody(fnBody []ast.Stmt, fnEnv env.Environment, declaredReturnType Type) Type {
 	previousEnclosingFnReturnType := c.declaredFnReturnType
 	defer func() { c.declaredFnReturnType = previousEnclosingFnReturnType }()
 

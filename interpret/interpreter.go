@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/chidiwilliams/glox/ast"
+	"github.com/chidiwilliams/glox/env"
 )
 
 type runtimeError struct {
@@ -20,9 +21,9 @@ func (r runtimeError) Error() string {
 // environment for a program to be executed
 type Interpreter struct {
 	// current execution environment
-	environment *Environment
+	environment *env.Environment
 	// global variables
-	globals Environment
+	globals env.Environment
 	// standard output
 	stdOut io.Writer
 	// standard error
@@ -35,7 +36,7 @@ type Interpreter struct {
 
 // NewInterpreter sets up a new interpreter with its environment and config
 func NewInterpreter(stdOut io.Writer, stdErr io.Writer) *Interpreter {
-	globals := Environment{}
+	globals := env.New(nil)
 	globals.Define("clock", clock{})
 
 	return &Interpreter{
@@ -91,7 +92,7 @@ func (in *Interpreter) evaluate(expr ast.Expr) interface{} {
 }
 
 func (in *Interpreter) VisitBlockStmt(stmt ast.BlockStmt) interface{} {
-	in.executeBlock(stmt.Statements, Environment{Enclosing: in.environment})
+	in.executeBlock(stmt.Statements, env.New(in.environment))
 	return nil
 }
 
@@ -108,7 +109,8 @@ func (in *Interpreter) VisitClassStmt(stmt ast.ClassStmt) interface{} {
 	in.environment.Define(stmt.Name.Lexeme, nil)
 
 	if superclass != nil {
-		in.environment = &Environment{Enclosing: in.environment}
+		superEnv := env.New(in.environment)
+		in.environment = &superEnv
 		in.environment.Define("super", superclass)
 	}
 
@@ -129,7 +131,7 @@ func (in *Interpreter) VisitClassStmt(stmt ast.ClassStmt) interface{} {
 		in.environment = in.environment.Enclosing
 	}
 
-	err := in.environment.assign(stmt.Name, class)
+	err := in.environment.Assign(stmt.Name.Lexeme, class)
 	if err != nil {
 		panic(err)
 	}
@@ -251,9 +253,9 @@ func (in *Interpreter) VisitAssignExpr(expr ast.AssignExpr) interface{} {
 
 	distance, ok := in.GetLocalDistance(expr)
 	if ok {
-		in.environment.assignAt(distance, expr.Name, value)
+		in.environment.AssignAt(distance, expr.Name.Lexeme, value)
 	} else {
-		if err := in.globals.assign(expr.Name, value); err != nil {
+		if err := in.globals.Assign(expr.Name.Lexeme, value); err != nil {
 			panic(err)
 		}
 	}
@@ -364,7 +366,8 @@ func (in *Interpreter) VisitBinaryExpr(expr ast.BinaryExpr) interface{} {
 // VisitFunctionExpr creates a new function from the function expression and the
 // current environment. The name of the function expression is defined within its block.
 func (in *Interpreter) VisitFunctionExpr(expr ast.FunctionExpr) interface{} {
-	fn := functionExpr{declaration: expr, closure: &Environment{Enclosing: in.environment}}
+	closureEnv := env.New(in.environment)
+	fn := functionExpr{declaration: expr, closure: &closureEnv}
 	if expr.Name != nil {
 		fn.closure.Define(expr.Name.Lexeme, fn)
 	}
@@ -432,7 +435,7 @@ func (in *Interpreter) VisitTernaryExpr(expr ast.TernaryExpr) interface{} {
 	return in.evaluate(expr.Alternate)
 }
 
-func (in *Interpreter) executeBlock(statements []ast.Stmt, env Environment) {
+func (in *Interpreter) executeBlock(statements []ast.Stmt, env env.Environment) {
 	// Restore the current environment after executing the block
 	previous := in.environment
 	defer func() {
