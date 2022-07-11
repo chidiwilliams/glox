@@ -288,19 +288,11 @@ func (c *TypeChecker) VisitBinaryExpr(expr ast.BinaryExpr) interface{} {
 }
 
 func (c *TypeChecker) VisitCallExpr(expr ast.CallExpr) interface{} {
-	// TODO: change to callable interface
-	switch calleeType := c.check(expr.Callee).(type) {
-	case functionType:
-		return c.checkFunctionCall(calleeType, expr)
-	case classType:
-		constructor, err := calleeType.getConstructor()
-		if err != nil {
-			panic(typeError{message: err.Error()})
-		}
-		return c.checkFunctionCall(constructor, expr)
-	default:
-		panic(typeError{message: "Cannot call a value that is not a function or method"})
+	calleeType, ok := c.check(expr.Callee).(functionType)
+	if !ok {
+		c.error(expr.Callee.StartLine(), "can only call functions or classes")
 	}
+	return c.checkFunctionCall(calleeType, expr)
 }
 
 func (c *TypeChecker) checkFunctionCall(calleeType functionType, expr ast.CallExpr) loxType {
@@ -489,7 +481,7 @@ func (c *TypeChecker) typeFromParsed(parsedType ast.Type) loxType {
 
 func (c *TypeChecker) expect(actual loxType, expected loxType, value ast.Expr, expr ast.Expr) loxType {
 	if !actual.equals(expected) {
-		c.errorNoLine(fmt.Sprintf("error on line %d: expected '%s' type, but got '%s'", value.StartLine()+1, expected.String(), actual.String()))
+		c.error(value.StartLine(), fmt.Sprintf("expected '%s' type, but got '%s'", expected.String(), actual.String()))
 	}
 	return actual
 }

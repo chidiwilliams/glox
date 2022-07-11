@@ -1,1 +1,1 @@
-unexpected type: string in {{23 firstName %!s(<nil>)} 8 - %!s(<nil>) {23 lastName %!s(<nil>)}}, allowed: [number]
+type error on line 1: unexpected type: string in {{23 firstName %!s(<nil>)} 8 - %!s(<nil>) {23 lastName %!s(<nil>)}}, allowed: [number]

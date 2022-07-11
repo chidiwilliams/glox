@@ -12,10 +12,7 @@ type typeError struct {
 }
 
 func (e typeError) Error() string {
-	if e.line > 0 {
-		return fmt.Sprintf("type error on line %d: %s", e.line, e.message)
-	}
-	return e.message
+	return fmt.Sprintf("type error on line %d: %s", e.line+1, e.message)
 }
 
 type loxType interface {

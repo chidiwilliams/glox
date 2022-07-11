@@ -1,1 +1,1 @@
-error on line 5: expected 'number' type, but got 'string'
+type error on line 5: expected 'number' type, but got 'string'
