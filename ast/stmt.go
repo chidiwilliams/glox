@@ -24,11 +24,17 @@ func (b BlockStmt) Accept(visitor StmtVisitor) interface{} {
 	return visitor.VisitBlockStmt(b)
 }
 
+type Field struct {
+	Name  Token
+	Value Expr
+	Type  Type
+}
+
 type ClassStmt struct {
 	Name       Token
 	Superclass *VariableExpr
 	Methods    []FunctionStmt
-	Fields     []AssignExpr
+	Fields     []Field
 	LineStart  int
 	LineEnd    int
 }

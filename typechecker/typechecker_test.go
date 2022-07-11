@@ -43,9 +43,11 @@ func TestTypeChecker_CheckStmts(t *testing.T) {
 			wantErr := strings.Trim(string(want), "\n")
 
 			if typeErr != nil && wantErr == "" ||
-				typeErr != nil && typeErr.Error() != wantErr ||
-				typeErr == nil && wantErr != "" {
+				typeErr != nil && typeErr.Error() != wantErr {
 				t.Errorf("Check() error = %v, want %v", strconv.Quote(typeErr.Error()), strconv.Quote(wantErr))
+			}
+			if typeErr == nil && wantErr != "" {
+				t.Errorf("Check() error = nil, want %v", strconv.Quote(wantErr))
 			}
 		})
 	}

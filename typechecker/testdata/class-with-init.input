@@ -1,0 +1,16 @@
+class Rectangle {
+    length: number = 0;
+    width: number = 0;
+
+    init(length: number, width: number) {
+        this.length = length;
+        this.width = width;
+    }
+
+    area(): number {
+        return this.length * this.width;
+    }
+}
+
+var rectangle: Rectangle = Rectangle(2, 9);
+print rectangle.area();

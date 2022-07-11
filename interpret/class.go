@@ -11,7 +11,7 @@ type class struct {
 	name       string
 	methods    map[string]function
 	superclass *class
-	fields     []ast.AssignExpr
+	fields     []ast.Field
 	env        *env.Environment
 }
 

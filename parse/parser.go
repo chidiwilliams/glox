@@ -131,10 +131,10 @@ func (p *Parser) classDeclaration() ast.Stmt {
 	p.consume(ast.TokenLeftBrace, "Expect '{' before class body.")
 
 	methods := make([]ast.FunctionStmt, 0)
-	fields := make([]ast.AssignExpr, 0)
+	fields := make([]ast.Field, 0)
 	for !p.check(ast.TokenRightBrace) && !p.isAtEnd() {
 		// Is there another way to do this besides peeking next?
-		if p.peekNext().TokenType == ast.TokenEqual {
+		if p.peekNext().TokenType == ast.TokenEqual || p.peekNext().TokenType == ast.TokenColon {
 			field := p.field()
 			fields = append(fields, field)
 		} else {
@@ -365,8 +365,13 @@ func (p *Parser) expressionStatement() ast.Stmt {
 	return ast.ExpressionStmt{Expr: expr}
 }
 
-func (p *Parser) field() ast.AssignExpr {
+func (p *Parser) field() ast.Field {
 	name := p.consume(ast.TokenIdentifier, "Expect field name.")
+
+	var fieldType ast.Type
+	if p.match(ast.TokenColon) {
+		fieldType = p.typeAnnotation()
+	}
 
 	var value ast.Expr
 	if p.match(ast.TokenEqual) {
@@ -375,7 +380,7 @@ func (p *Parser) field() ast.AssignExpr {
 
 	p.consume(ast.TokenSemicolon, "Expect ';' after field.")
 
-	return ast.AssignExpr{Name: name, Value: value}
+	return ast.Field{Name: name, Value: value, Type: fieldType}
 }
 
 func (p *Parser) function(kind string) ast.FunctionStmt {

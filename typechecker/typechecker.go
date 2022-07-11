@@ -88,6 +88,17 @@ func (c *TypeChecker) VisitClassStmt(stmt ast.ClassStmt) interface{} {
 
 	c.env.Define("this", classType)
 
+	for _, field := range stmt.Fields {
+		fieldType := c.check(field.Value)
+
+		if field.Type != nil {
+			expectedType := c.typeFromParsed(field.Type)
+			c.expect(fieldType, expectedType, field.Value, field.Value)
+		}
+
+		classType.properties.Define(field.Name.Lexeme, fieldType)
+	}
+
 	for _, method := range stmt.Methods {
 		c.checkMethod(method)
 	}
@@ -337,8 +348,19 @@ func (c *TypeChecker) checkFunctionBody(fnBody []ast.Stmt, fnEnv *env.Environmen
 }
 
 func (c *TypeChecker) VisitGetExpr(expr ast.GetExpr) interface{} {
-	// TODO implement me
-	panic("implement me")
+	object := c.check(expr.Object)
+
+	objectClassType, ok := object.(classType)
+	if !ok {
+		c.error("object must be an instance of a class")
+	}
+
+	field, err := objectClassType.getField(expr.Name.Lexeme)
+	if err != nil {
+		c.error(err.Error())
+	}
+
+	return field
 }
 
 func (c *TypeChecker) VisitGroupingExpr(expr ast.GroupingExpr) interface{} {
