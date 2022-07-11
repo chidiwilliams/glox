@@ -1,0 +1,17 @@
+class Point {
+    x = 0;
+    y = 0;
+    z = 5;
+
+    init(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    calc() {
+        return this.x + this.y + this.z;
+    }
+}
+
+var point = Point(10, 20);
+print point.calc();

@@ -35,8 +35,9 @@ Parser grammar:
 
 	program      => declaration* EOF
 	declaration  => classDecl | funcDecl | varDecl | typeDecl | statement
-	classDecl    => "class" IDENTIFIER ( "<" IDENTIFIER )? "{" method* "}"
+	classDecl    => "class" IDENTIFIER ( "<" IDENTIFIER )? "{" ( method | field )* "}"
 	method       => IDENTIFIER parameterList? ( ":" type )? block
+	field        => IDENTIFIER "=" expression ";"
 	funDecl      => "fun" function
 	function     => IDENTIFIER parameterList ( ":" type )? block
 	parameters   => IDENTIFIER ( ":" type )? ( "," IDENTIFIER ( ":" type )? )*
@@ -130,15 +131,23 @@ func (p *Parser) classDeclaration() ast.Stmt {
 	p.consume(ast.TokenLeftBrace, "Expect '{' before class body.")
 
 	methods := make([]ast.FunctionStmt, 0)
+	fields := make([]ast.AssignExpr, 0)
 	for !p.check(ast.TokenRightBrace) && !p.isAtEnd() {
-		fn := p.function("method")
-		methods = append(methods, fn)
+		// Is there another way to do this besides peeking next?
+		if p.peekNext().TokenType == ast.TokenEqual {
+			field := p.field()
+			fields = append(fields, field)
+		} else {
+			method := p.function("method")
+			methods = append(methods, method)
+		}
 	}
 
 	p.consume(ast.TokenRightBrace, "Expect '}' after class body.")
 
 	return ast.ClassStmt{
 		Name:       name,
+		Fields:     fields,
 		Methods:    methods,
 		Superclass: superclass,
 		LineStart:  lineStart,
@@ -354,6 +363,19 @@ func (p *Parser) expressionStatement() ast.Stmt {
 	// panic if the next token is not a semicolon
 	p.consume(ast.TokenSemicolon, "Expect ';' after value")
 	return ast.ExpressionStmt{Expr: expr}
+}
+
+func (p *Parser) field() ast.AssignExpr {
+	name := p.consume(ast.TokenIdentifier, "Expect field name.")
+
+	var value ast.Expr
+	if p.match(ast.TokenEqual) {
+		value = p.expression()
+	}
+
+	p.consume(ast.TokenSemicolon, "Expect ';' after field.")
+
+	return ast.AssignExpr{Name: name, Value: value}
 }
 
 func (p *Parser) function(kind string) ast.FunctionStmt {
@@ -708,4 +730,8 @@ func (p *Parser) peek() ast.Token {
 
 func (p *Parser) previous() ast.Token {
 	return p.tokens[p.current-1]
+}
+
+func (p *Parser) peekNext() ast.Token {
+	return p.tokens[p.current+1]
 }

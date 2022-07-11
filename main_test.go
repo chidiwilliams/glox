@@ -2,7 +2,10 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -278,4 +281,58 @@ BostonCream().cook();`, "Fry until golden brown.\nPipe full of custard and coat 
 			}
 		})
 	}
+}
+
+func TestRunFromFile(t *testing.T) {
+	paths, err := filepath.Glob(filepath.Join("testdata", "*.input"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range paths {
+		_, filename := filepath.Split(path)
+		testName := filename[:len(filename)-len(filepath.Ext(path))]
+
+		t.Run(testName, func(t *testing.T) {
+			source, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal("error reading test source file:", err)
+			}
+
+			goldenFile := filepath.Join("testdata", testName+".golden")
+			want, err := os.ReadFile(goldenFile)
+			if err != nil {
+				t.Fatal("error reading golden file", err)
+			}
+			wantOutput := strings.Trim(string(want), "\n")
+
+			wantStdOut, wantStdErr := splitWantOutput(wantOutput)
+
+			stdOut := &bytes.Buffer{}
+			stdErr := &bytes.Buffer{}
+			r := newRunner(stdOut, stdErr)
+			r.run(string(source))
+
+			if stdOut.String() != wantStdOut {
+				t.Errorf("stdOut: got %s, expected %s", strconv.Quote(stdOut.String()), strconv.Quote(wantStdOut))
+			}
+
+			if stdErr.String() != wantStdErr {
+				t.Errorf("stdErr: got %s, expected %s", strconv.Quote(stdErr.String()), strconv.Quote(wantStdErr))
+			}
+		})
+	}
+}
+
+func splitWantOutput(output string) (stdOut string, stdErr string) {
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		if len(line) >= 5 && line[:5] == "err: " {
+			stdErr += line + "\n"
+		} else {
+			stdOut += line + "\n"
+		}
+	}
+
+	return
 }

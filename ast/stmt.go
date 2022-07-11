@@ -28,6 +28,7 @@ type ClassStmt struct {
 	Name       Token
 	Superclass *VariableExpr
 	Methods    []FunctionStmt
+	Fields     []AssignExpr
 	LineStart  int
 	LineEnd    int
 }
