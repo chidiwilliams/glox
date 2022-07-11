@@ -265,6 +265,7 @@ func (c *TypeChecker) VisitBinaryExpr(expr ast.BinaryExpr) interface{} {
 }
 
 func (c *TypeChecker) VisitCallExpr(expr ast.CallExpr) interface{} {
+	// TODO: change to callable interface
 	switch calleeType := c.check(expr.Callee).(type) {
 	case functionType:
 		return c.checkFunctionCall(calleeType, expr)

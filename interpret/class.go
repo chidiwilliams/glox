@@ -4,16 +4,19 @@ import (
 	"fmt"
 
 	"github.com/chidiwilliams/glox/ast"
+	"github.com/chidiwilliams/glox/env"
 )
 
-type Class struct {
+type class struct {
 	name       string
 	methods    map[string]function
-	superclass *Class
+	superclass *class
+	fields     []ast.AssignExpr
+	env        *env.Environment
 }
 
 // arity returns the arity of the class's constructor
-func (c Class) arity() int {
+func (c class) arity() int {
 	if initializer, ok := c.findMethod("init"); ok {
 		return initializer.arity()
 	}
@@ -21,8 +24,17 @@ func (c Class) arity() int {
 }
 
 // call-s the class's constructor and returns the new instance
-func (c Class) call(interpreter *Interpreter, arguments []interface{}) interface{} {
+func (c class) call(interpreter *Interpreter, arguments []interface{}) interface{} {
 	in := &instance{class: c}
+
+	// interpret fields
+	previous := interpreter.environment
+	interpreter.environment = c.env
+	for _, field := range c.fields {
+		value := interpreter.evaluate(field.Value)
+		in.set(field.Name, value)
+	}
+	interpreter.environment = previous
 
 	// initialize
 	if initializer, ok := c.findMethod("init"); ok {
@@ -33,14 +45,14 @@ func (c Class) call(interpreter *Interpreter, arguments []interface{}) interface
 }
 
 // Get returns value of the static method with the given name
-func (c Class) Get(in *Interpreter, name ast.Token) (interface{}, error) {
+func (c class) Get(in *Interpreter, name ast.Token) (interface{}, error) {
 	if method, ok := c.findMethod(name.Lexeme); ok {
 		return method, nil
 	}
 	return nil, runtimeError{token: name, msg: fmt.Sprintf("Undefined property '%s'.", name.Lexeme)}
 }
 
-func (c Class) findMethod(name string) (function, bool) {
+func (c class) findMethod(name string) (function, bool) {
 	method, ok := c.methods[name]
 	if ok {
 		return method, true
@@ -51,7 +63,7 @@ func (c Class) findMethod(name string) (function, bool) {
 	return function{}, false
 }
 
-func (c Class) String() string {
+func (c class) String() string {
 	return c.name
 }
 
@@ -61,7 +73,7 @@ type Instance interface {
 
 // instance is an instance of a class
 type instance struct {
-	class  Class
+	class  class
 	fields map[string]interface{}
 }
 

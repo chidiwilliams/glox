@@ -97,9 +97,9 @@ func (in *Interpreter) VisitBlockStmt(stmt ast.BlockStmt) interface{} {
 }
 
 func (in *Interpreter) VisitClassStmt(stmt ast.ClassStmt) interface{} {
-	var superclass *Class
+	var superclass *class
 	if stmt.Superclass != nil {
-		superclassValue, ok := in.evaluate(stmt.Superclass).(Class)
+		superclassValue, ok := in.evaluate(stmt.Superclass).(class)
 		if !ok {
 			in.error(stmt.Superclass.Name, "Superclass must be a class.")
 		}
@@ -124,7 +124,7 @@ func (in *Interpreter) VisitClassStmt(stmt ast.ClassStmt) interface{} {
 		methods[method.Name.Lexeme] = fn
 	}
 
-	class := Class{name: stmt.Name.Lexeme, methods: methods, superclass: superclass}
+	class := class{name: stmt.Name.Lexeme, methods: methods, superclass: superclass, fields: stmt.Fields, env: in.environment}
 
 	if superclass != nil {
 		in.environment = in.environment.Enclosing
@@ -397,7 +397,7 @@ func (in *Interpreter) VisitSetExpr(expr ast.SetExpr) interface{} {
 
 func (in *Interpreter) VisitSuperExpr(expr ast.SuperExpr) interface{} {
 	distance, _ := in.GetLocalDistance(expr)
-	superclass := in.environment.GetAt(distance, "super").(*Class)
+	superclass := in.environment.GetAt(distance, "super").(*class)
 	object := in.environment.GetAt(distance-1, "this").(*instance)
 	method, ok := superclass.findMethod(expr.Method.Lexeme)
 	if !ok {
