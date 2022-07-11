@@ -33,6 +33,7 @@ type Field struct {
 type ClassStmt struct {
 	Name       Token
 	Superclass *VariableExpr
+	Init       *FunctionStmt
 	Methods    []FunctionStmt
 	Fields     []Field
 	LineStart  int

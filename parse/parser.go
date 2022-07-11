@@ -130,6 +130,7 @@ func (p *Parser) classDeclaration() ast.Stmt {
 
 	p.consume(ast.TokenLeftBrace, "Expect '{' before class body.")
 
+	var initMethod *ast.FunctionStmt
 	methods := make([]ast.FunctionStmt, 0)
 	fields := make([]ast.Field, 0)
 	for !p.check(ast.TokenRightBrace) && !p.isAtEnd() {
@@ -139,7 +140,11 @@ func (p *Parser) classDeclaration() ast.Stmt {
 			fields = append(fields, field)
 		} else {
 			method := p.function("method")
-			methods = append(methods, method)
+			if method.Name.Lexeme == "init" {
+				initMethod = &method
+			} else {
+				methods = append(methods, method)
+			}
 		}
 	}
 
@@ -148,6 +153,7 @@ func (p *Parser) classDeclaration() ast.Stmt {
 	return ast.ClassStmt{
 		Name:       name,
 		Fields:     fields,
+		Init:       initMethod,
 		Methods:    methods,
 		Superclass: superclass,
 		LineStart:  lineStart,

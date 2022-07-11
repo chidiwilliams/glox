@@ -164,13 +164,11 @@ type SetExpr struct {
 }
 
 func (b SetExpr) StartLine() int {
-	// TODO implement me
-	panic("implement me")
+	return b.Object.StartLine()
 }
 
 func (b SetExpr) EndLine() int {
-	// TODO implement me
-	panic("implement me")
+	return b.Value.EndLine()
 }
 
 func (b SetExpr) Accept(visitor ExprVisitor) interface{} {

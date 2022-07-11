@@ -308,13 +308,12 @@ func (r *Resolver) VisitClassStmt(stmt ast.ClassStmt) interface{} {
 
 	r.scopes.peek().set("this")
 
-	for _, method := range stmt.Methods {
-		declaration := functionTypeMethod
-		if method.Name.Lexeme == "init" {
-			declaration = functionTypeInitializer
-		}
+	if stmt.Init != nil {
+		r.resolveFunction(*stmt.Init, functionTypeInitializer)
+	}
 
-		r.resolveFunction(method, declaration)
+	for _, method := range stmt.Methods {
+		r.resolveFunction(method, functionTypeMethod)
 	}
 
 	r.endScope()

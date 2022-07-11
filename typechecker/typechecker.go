@@ -34,12 +34,12 @@ type TypeChecker struct {
 
 func (c *TypeChecker) VisitTypeDeclStmt(stmt ast.TypeDeclStmt) interface{} {
 	if c.env.Has(stmt.Name.Lexeme) {
-		c.error(fmt.Sprintf("Type with name %s is already defined.", stmt.Name.Lexeme))
+		c.errorNoLine(fmt.Sprintf("Type with name %s is already defined.", stmt.Name.Lexeme))
 	}
 
 	baseType := c.typeFromParsed(stmt.Base)
 	if baseType == nil {
-		c.error(fmt.Sprintf("Type %v is not defined", stmt.Base))
+		c.errorNoLine(fmt.Sprintf("Type %v is not defined", stmt.Base))
 	}
 
 	alias := newAliasType(stmt.Name.Lexeme, baseType)
@@ -74,7 +74,6 @@ func (c *TypeChecker) VisitClassStmt(stmt ast.ClassStmt) interface{} {
 	classType := newClassType(stmt.Name.Lexeme, superclassType)
 
 	c.types[stmt.Name.Lexeme] = classType
-	c.env.Define(stmt.Name.Lexeme, classType)
 
 	previous := c.env
 	previousClass := c.enclosingClass
@@ -99,8 +98,21 @@ func (c *TypeChecker) VisitClassStmt(stmt ast.ClassStmt) interface{} {
 		classType.properties.Define(field.Name.Lexeme, fieldType)
 	}
 
+	// Get signature of the init method. We do this before checking the rest of the
+	// methods, just in case the methods also reference the class in their body
+	var initMethodParams []loxType
+	if stmt.Init != nil {
+		initMethodParams = make([]loxType, len(stmt.Init.Params))
+		for i, param := range stmt.Init.Params {
+			initMethodParams[i] = c.typeFromParsed(param.Type)
+		}
+	}
+
+	previous.Define(stmt.Name.Lexeme, newFunctionType("", initMethodParams, classType))
+
 	for _, method := range stmt.Methods {
 		c.checkMethod(method)
+		// TODO: shouldn't this be saved somewhere?
 	}
 
 	return nil
@@ -352,12 +364,12 @@ func (c *TypeChecker) VisitGetExpr(expr ast.GetExpr) interface{} {
 
 	objectClassType, ok := object.(classType)
 	if !ok {
-		c.error("object must be an instance of a class")
+		c.errorNoLine("object must be an instance of a class")
 	}
 
 	field, err := objectClassType.getField(expr.Name.Lexeme)
 	if err != nil {
-		c.error(err.Error())
+		c.errorNoLine(err.Error())
 	}
 
 	return field
@@ -389,12 +401,12 @@ func (c *TypeChecker) VisitSetExpr(expr ast.SetExpr) interface{} {
 
 	objectAsClassType, ok := object.(classType)
 	if !ok {
-		panic(typeError{message: "cannot set properties on a non-class type"})
+		c.error(expr.StartLine(), "only instances have fields")
 	}
 
 	property, err := objectAsClassType.properties.Get(expr.Name.Lexeme)
 	if err != nil {
-		c.error("property does not exist on class")
+		c.errorNoLine("property does not exist on class")
 	}
 
 	valueType := c.check(expr.Value)
@@ -477,7 +489,7 @@ func (c *TypeChecker) typeFromParsed(parsedType ast.Type) loxType {
 
 func (c *TypeChecker) expect(actual loxType, expected loxType, value ast.Expr, expr ast.Expr) loxType {
 	if !actual.equals(expected) {
-		c.error(fmt.Sprintf("error on line %d: expected '%s' type, but got '%s'", value.StartLine()+1, expected.String(), actual.String()))
+		c.errorNoLine(fmt.Sprintf("error on line %d: expected '%s' type, but got '%s'", value.StartLine()+1, expected.String(), actual.String()))
 	}
 	return actual
 }
@@ -497,11 +509,15 @@ func (c *TypeChecker) expectOperatorType(inputType loxType, allowedTypes []loxTy
 			return
 		}
 	}
-	c.error(fmt.Sprintf("unexpected type: %v in %v, allowed: %v", inputType, expr, allowedTypes))
+	c.errorNoLine(fmt.Sprintf("unexpected type: %v in %v, allowed: %v", inputType, expr, allowedTypes))
 }
 
-func (c *TypeChecker) error(message string) {
+func (c *TypeChecker) errorNoLine(message string) {
 	panic(typeError{message: message})
+}
+
+func (c *TypeChecker) error(line int, message string) {
+	panic(typeError{line: line, message: message})
 }
 
 func (c *TypeChecker) isBooleanBinary(operator ast.Token) bool {

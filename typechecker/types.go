@@ -1,12 +1,20 @@
 package typechecker
 
-import "github.com/chidiwilliams/glox/env"
+import (
+	"fmt"
+
+	"github.com/chidiwilliams/glox/env"
+)
 
 type typeError struct {
 	message string
+	line    int
 }
 
 func (e typeError) Error() string {
+	if e.line > 0 {
+		return fmt.Sprintf("type error on line %d: %s", e.line, e.message)
+	}
 	return e.message
 }
 

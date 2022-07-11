@@ -113,18 +113,35 @@ func (in *Interpreter) VisitClassStmt(stmt ast.ClassStmt) interface{} {
 		in.environment.Define("super", superclass)
 	}
 
+	var initializer *function
+	if stmt.Init != nil {
+		initializer = &function{
+			declaration:   *stmt.Init,
+			closure:       in.environment,
+			isInitializer: true,
+			isGetter:      false,
+		}
+	}
+
 	methods := make(map[string]function, len(stmt.Methods))
 	for _, method := range stmt.Methods {
 		fn := function{
 			declaration:   method,
 			closure:       in.environment,
-			isInitializer: method.Name.Lexeme == "init",
+			isInitializer: false,
 			isGetter:      method.Params == nil, // is this the best way to know it's a getter?
 		}
 		methods[method.Name.Lexeme] = fn
 	}
 
-	class := class{name: stmt.Name.Lexeme, methods: methods, superclass: superclass, fields: stmt.Fields, env: in.environment}
+	class := class{
+		name:        stmt.Name.Lexeme,
+		methods:     methods,
+		superclass:  superclass,
+		fields:      stmt.Fields,
+		env:         in.environment,
+		initializer: initializer,
+	}
 
 	if superclass != nil {
 		in.environment = in.environment.Enclosing
@@ -399,8 +416,8 @@ func (in *Interpreter) VisitSuperExpr(expr ast.SuperExpr) interface{} {
 	distance, _ := in.GetLocalDistance(expr)
 	superclass := in.environment.GetAt(distance, "super").(*class)
 	object := in.environment.GetAt(distance-1, "this").(*instance)
-	method, ok := superclass.findMethod(expr.Method.Lexeme)
-	if !ok {
+	method := superclass.findMethod(expr.Method.Lexeme)
+	if method == nil {
 		in.error(expr.Method, fmt.Sprintf("Undefined property '%s'.", expr.Method.Lexeme))
 	}
 	return method.bind(object)

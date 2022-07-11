@@ -8,19 +8,20 @@ import (
 )
 
 type class struct {
-	name       string
-	methods    map[string]function
-	superclass *class
-	fields     []ast.Field
-	env        *env.Environment
+	name        string
+	initializer *function
+	methods     map[string]function
+	superclass  *class
+	fields      []ast.Field
+	env         *env.Environment
 }
 
 // arity returns the arity of the class's constructor
 func (c class) arity() int {
-	if initializer, ok := c.findMethod("init"); ok {
-		return initializer.arity()
+	if c.initializer == nil {
+		return 0
 	}
-	return 0
+	return c.initializer.arity()
 }
 
 // call-s the class's constructor and returns the new instance
@@ -37,8 +38,8 @@ func (c class) call(interpreter *Interpreter, arguments []interface{}) interface
 	interpreter.environment = previous
 
 	// initialize
-	if initializer, ok := c.findMethod("init"); ok {
-		initializer.bind(in).call(interpreter, arguments)
+	if c.initializer != nil {
+		c.initializer.bind(in).call(interpreter, arguments)
 	}
 
 	return in
@@ -46,21 +47,30 @@ func (c class) call(interpreter *Interpreter, arguments []interface{}) interface
 
 // Get returns value of the static method with the given name
 func (c class) Get(in *Interpreter, name ast.Token) (interface{}, error) {
-	if method, ok := c.findMethod(name.Lexeme); ok {
-		return method, nil
+	method := c.findMethod(name.Lexeme)
+	if method == nil {
+		return nil, runtimeError{token: name, msg: fmt.Sprintf("Undefined property '%s'.", name.Lexeme)}
 	}
-	return nil, runtimeError{token: name, msg: fmt.Sprintf("Undefined property '%s'.", name.Lexeme)}
+	return method, nil
 }
 
-func (c class) findMethod(name string) (function, bool) {
+// todo: should probably return a pointer
+func (c class) findMethod(name string) *function {
+	if name == "init" {
+		if c.initializer == nil {
+			return nil
+		}
+		return c.initializer
+	}
+
 	method, ok := c.methods[name]
 	if ok {
-		return method, true
+		return &method
 	}
 	if c.superclass != nil {
 		return c.superclass.findMethod(name)
 	}
-	return function{}, false
+	return nil
 }
 
 func (c class) String() string {
@@ -84,7 +94,8 @@ func (i *instance) Get(in *Interpreter, name ast.Token) (interface{}, error) {
 		return val, nil
 	}
 
-	if method, ok := i.class.findMethod(name.Lexeme); ok {
+	method := i.class.findMethod(name.Lexeme)
+	if method != nil {
 		// if the method is a getter, call and return its value
 		if method.isGetter {
 			return method.bind(i).call(in, nil), nil
