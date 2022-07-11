@@ -19,7 +19,7 @@ func NewTypeChecker(interpreter *interpret.Interpreter) *TypeChecker {
 		"nil":    typeNil,
 	}
 
-	return &TypeChecker{env: &globals, globals: &globals, interpreter: interpreter, types: types}
+	return &TypeChecker{env: globals, globals: globals, interpreter: interpreter, types: types}
 }
 
 type TypeChecker struct {
@@ -52,14 +52,14 @@ func (c *TypeChecker) VisitBlockStmt(stmt ast.BlockStmt) interface{} {
 	return nil
 }
 
-func (c *TypeChecker) checkBlock(stmts []ast.Stmt, env env.Environment) {
+func (c *TypeChecker) checkBlock(stmts []ast.Stmt, env *env.Environment) {
 	// Restore the current environment after executing the block
 	previous := c.env
 	defer func() {
 		c.env = previous
 	}()
 
-	c.env = &env
+	c.env = env
 	for _, stmt := range stmts {
 		c.checkStmt(stmt)
 	}
@@ -83,17 +83,57 @@ func (c *TypeChecker) VisitClassStmt(stmt ast.ClassStmt) interface{} {
 		c.enclosingClass = previousClass
 	}()
 
-	c.env = classType.env
+	c.env = env.New(previous)
 	c.enclosingClass = classType
 
-	// What should the actual type of classType be? Shouldn't it be a function
-	// callable by its initializer's args to return the class type?
+	c.env.Define("this", classType)
 
 	for _, method := range stmt.Methods {
-		c.checkStmt(method)
+		c.checkMethod(method)
 	}
 
 	return nil
+}
+
+func (c *TypeChecker) checkMethod(stmt ast.FunctionStmt) functionType {
+	// Check the method within the current environment
+	// Save the name and return type in the class's properties
+
+	params := stmt.Params
+	parsedReturnType := stmt.ReturnType
+	name := &stmt.Name
+	enclosingEnv := c.env
+	body := stmt.Body
+
+	// Predefine function type from signature for recursive calls
+	paramTypes := make([]loxType, len(params))
+	for i, param := range params {
+		paramTypes[i] = c.typeFromParsed(param.Type)
+	}
+
+	var returnType loxType
+	if name != nil && (*name).Lexeme == "init" {
+		returnType = c.enclosingClass
+	} else {
+		returnType = c.typeFromParsed(parsedReturnType)
+	}
+
+	if name != nil {
+		c.enclosingClass.properties.Define(name.Lexeme, newFunctionType("", paramTypes, returnType))
+	}
+
+	fnEnv := env.New(enclosingEnv)
+	for i, param := range params {
+		fnEnv.Define(param.Token.Lexeme, paramTypes[i])
+	}
+
+	inferredReturnType := c.checkFunctionBody(body, fnEnv, returnType)
+
+	if parsedReturnType != nil && !inferredReturnType.equals(returnType) {
+		panic(typeError{message: fmt.Sprintf("expected function %s to return %s, but got %s", body, parsedReturnType, inferredReturnType)})
+	}
+
+	return functionType{paramTypes: paramTypes, returnType: inferredReturnType}
 }
 
 func (c *TypeChecker) VisitExpressionStmt(stmt ast.ExpressionStmt) interface{} {
@@ -253,8 +293,7 @@ func (c *TypeChecker) checkFunctionCall(calleeType functionType, expr ast.CallEx
 }
 
 func (c *TypeChecker) VisitFunctionExpr(expr ast.FunctionExpr) interface{} {
-	fnDeclEnv := env.New(c.env)
-	return c.checkFunction(expr.Name, expr.Params, expr.Body, expr.ReturnType, &fnDeclEnv)
+	return c.checkFunction(expr.Name, expr.Params, expr.Body, expr.ReturnType, env.New(c.env))
 }
 
 func (c *TypeChecker) checkFunction(name *ast.Token, params []ast.Param, body []ast.Stmt, parsedReturnType ast.Type, enclosingEnv *env.Environment) functionType {
@@ -283,7 +322,7 @@ func (c *TypeChecker) checkFunction(name *ast.Token, params []ast.Param, body []
 	return functionType{paramTypes: paramTypes, returnType: inferredReturnType}
 }
 
-func (c *TypeChecker) checkFunctionBody(fnBody []ast.Stmt, fnEnv env.Environment, declaredReturnType loxType) loxType {
+func (c *TypeChecker) checkFunctionBody(fnBody []ast.Stmt, fnEnv *env.Environment, declaredReturnType loxType) loxType {
 	previousEnclosingFnReturnType := c.declaredFnReturnType
 	defer func() { c.declaredFnReturnType = previousEnclosingFnReturnType }()
 
@@ -323,11 +362,21 @@ func (c *TypeChecker) VisitLogicalExpr(expr ast.LogicalExpr) interface{} {
 }
 
 func (c *TypeChecker) VisitSetExpr(expr ast.SetExpr) interface{} {
-	// TODO: check that the object is an instance of a class
-	// and that object[name] has the same type as value
-	c.check(expr.Object)
+	object := c.check(expr.Object)
 
-	return c.check(expr.Value)
+	objectAsClassType, ok := object.(classType)
+	if !ok {
+		panic(typeError{message: "cannot set properties on a non-class type"})
+	}
+
+	property, err := objectAsClassType.properties.Get(expr.Name.Lexeme)
+	if err != nil {
+		c.error("property does not exist on class")
+	}
+
+	valueType := c.check(expr.Value)
+	c.expect(valueType, property.(loxType), expr.Value, expr)
+	return valueType
 }
 
 func (c *TypeChecker) VisitSuperExpr(expr ast.SuperExpr) interface{} {

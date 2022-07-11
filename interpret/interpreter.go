@@ -23,7 +23,7 @@ type Interpreter struct {
 	// current execution environment
 	environment *env.Environment
 	// global variables
-	globals env.Environment
+	globals *env.Environment
 	// standard output
 	stdOut io.Writer
 	// standard error
@@ -41,7 +41,7 @@ func NewInterpreter(stdOut io.Writer, stdErr io.Writer) *Interpreter {
 
 	return &Interpreter{
 		globals:     globals,
-		environment: &globals,
+		environment: globals,
 		stdOut:      stdOut,
 		stdErr:      stdErr,
 		locals:      make(map[string]int),
@@ -109,8 +109,7 @@ func (in *Interpreter) VisitClassStmt(stmt ast.ClassStmt) interface{} {
 	in.environment.Define(stmt.Name.Lexeme, nil)
 
 	if superclass != nil {
-		superEnv := env.New(in.environment)
-		in.environment = &superEnv
+		in.environment = env.New(in.environment)
 		in.environment.Define("super", superclass)
 	}
 
@@ -367,7 +366,7 @@ func (in *Interpreter) VisitBinaryExpr(expr ast.BinaryExpr) interface{} {
 // current environment. The name of the function expression is defined within its block.
 func (in *Interpreter) VisitFunctionExpr(expr ast.FunctionExpr) interface{} {
 	closureEnv := env.New(in.environment)
-	fn := functionExpr{declaration: expr, closure: &closureEnv}
+	fn := functionExpr{declaration: expr, closure: closureEnv}
 	if expr.Name != nil {
 		fn.closure.Define(expr.Name.Lexeme, fn)
 	}
@@ -435,14 +434,14 @@ func (in *Interpreter) VisitTernaryExpr(expr ast.TernaryExpr) interface{} {
 	return in.evaluate(expr.Alternate)
 }
 
-func (in *Interpreter) executeBlock(statements []ast.Stmt, env env.Environment) {
+func (in *Interpreter) executeBlock(statements []ast.Stmt, env *env.Environment) {
 	// Restore the current environment after executing the block
 	previous := in.environment
 	defer func() {
 		in.environment = previous
 	}()
 
-	in.environment = &env
+	in.environment = env
 	for _, statement := range statements {
 		in.execute(statement)
 	}

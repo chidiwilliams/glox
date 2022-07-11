@@ -121,7 +121,7 @@ func (t aliasType) equals(t2 loxType) bool {
 type classType struct {
 	name       string
 	superClass loxType
-	env        *env.Environment
+	properties *env.Environment
 }
 
 func (t classType) String() string {
@@ -145,7 +145,7 @@ func (t classType) equals(t2 loxType) bool {
 }
 
 func (t classType) getField(name string) (loxType, error) {
-	fieldType, err := t.env.Get(name)
+	fieldType, err := t.properties.Get(name)
 	if err != nil {
 		return nil, err
 	}
@@ -165,13 +165,13 @@ func (t classType) getConstructor() (functionType, error) {
 func newClassType(name string, superClass loxType) classType {
 	var enclosingEnv *env.Environment
 	if superClassAsClassType, ok := superClass.(classType); ok {
-		enclosingEnv = superClassAsClassType.env
+		enclosingEnv = superClassAsClassType.properties
 	}
 
-	environment := env.New(enclosingEnv)
+	properties := env.New(enclosingEnv)
 	return classType{
 		name:       name,
 		superClass: superClass,
-		env:        &environment,
+		properties: properties,
 	}
 }

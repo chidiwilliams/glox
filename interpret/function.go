@@ -54,7 +54,7 @@ func (f function) bind(i *instance) function {
 	closureEnv.Define("this", i)
 	return function{
 		declaration:   f.declaration,
-		closure:       &closureEnv,
+		closure:       closureEnv,
 		isInitializer: f.isInitializer,
 	}
 }

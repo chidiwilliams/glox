@@ -15,8 +15,8 @@ type Environment struct {
 }
 
 // New returns a new environment enclosed by the given environment
-func New(enclosing *Environment) Environment {
-	return Environment{Enclosing: enclosing, values: make(map[string]interface{})}
+func New(enclosing *Environment) *Environment {
+	return &Environment{Enclosing: enclosing, values: make(map[string]interface{})}
 }
 
 // Define stores a new key-value pair
