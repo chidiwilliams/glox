@@ -1,0 +1,16 @@
+class A {
+    say(): string {
+        return "hello";
+    }
+}
+
+class B < A {
+}
+
+class C < B {
+    say(): string {
+        return super.say();
+    }
+}
+
+print C().say();

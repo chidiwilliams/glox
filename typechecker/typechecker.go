@@ -29,7 +29,6 @@ type TypeChecker struct {
 	declaredFnReturnType loxType
 	inferredFnReturnType loxType
 	types                map[string]loxType
-	enclosingClass       classType
 }
 
 func (c *TypeChecker) VisitTypeDeclStmt(stmt ast.TypeDeclStmt) interface{} {
@@ -66,24 +65,37 @@ func (c *TypeChecker) checkBlock(stmts []ast.Stmt, env *env.Environment) {
 }
 
 func (c *TypeChecker) VisitClassStmt(stmt ast.ClassStmt) interface{} {
-	var superclassType loxType
+	var superclassType *classType
 	if stmt.Superclass != nil {
-		superclassType = c.check(stmt.Superclass)
+		var ok bool
+		superclass, ok := c.types[stmt.Superclass.Name.Lexeme]
+		if !ok {
+			c.error(stmt.Superclass.StartLine(), "superclass is undefined")
+		}
+
+		superclassType, ok = superclass.(*classType)
+		if !ok {
+			c.error(stmt.Superclass.StartLine(), "superclass must be a class")
+		}
 	}
 
 	classType := newClassType(stmt.Name.Lexeme, superclassType)
-
 	c.types[stmt.Name.Lexeme] = classType
+	classEnv := c.env
 
+	if stmt.Superclass != nil {
+		previous := c.env
+		defer func() { c.env = previous }()
+
+		c.env = env.New(previous)
+		c.env.Define("super", superclassType)
+	}
+
+	// TODO: is there a way to make this a function, beginScope and endScope
 	previous := c.env
-	previousClass := c.enclosingClass
-	defer func() {
-		c.env = previous
-		c.enclosingClass = previousClass
-	}()
+	defer func() { c.env = previous }()
 
 	c.env = env.New(previous)
-	c.enclosingClass = classType
 
 	c.env.Define("this", classType)
 
@@ -108,17 +120,16 @@ func (c *TypeChecker) VisitClassStmt(stmt ast.ClassStmt) interface{} {
 		}
 	}
 
-	previous.Define(stmt.Name.Lexeme, newFunctionType("", initMethodParams, classType))
+	classEnv.Define(stmt.Name.Lexeme, newFunctionType("", initMethodParams, classType))
 
 	for _, method := range stmt.Methods {
-		c.checkMethod(method)
-		// TODO: shouldn't this be saved somewhere?
+		c.checkMethod(classType, method)
 	}
 
 	return nil
 }
 
-func (c *TypeChecker) checkMethod(stmt ast.FunctionStmt) functionType {
+func (c *TypeChecker) checkMethod(class *classType, stmt ast.FunctionStmt) functionType {
 	// Check the method within the current environment
 	// Save the name and return type in the class's properties
 
@@ -136,13 +147,13 @@ func (c *TypeChecker) checkMethod(stmt ast.FunctionStmt) functionType {
 
 	var returnType loxType
 	if name != nil && (*name).Lexeme == "init" {
-		returnType = c.enclosingClass
+		returnType = class
 	} else {
 		returnType = c.typeFromParsed(parsedReturnType)
 	}
 
 	if name != nil {
-		c.enclosingClass.properties.Define(name.Lexeme, newFunctionType("", paramTypes, returnType))
+		class.properties.Define(name.Lexeme, newFunctionType("", paramTypes, returnType))
 	}
 
 	fnEnv := env.New(enclosingEnv)
@@ -354,7 +365,7 @@ func (c *TypeChecker) checkFunctionBody(fnBody []ast.Stmt, fnEnv *env.Environmen
 func (c *TypeChecker) VisitGetExpr(expr ast.GetExpr) interface{} {
 	object := c.check(expr.Object)
 
-	objectClassType, ok := object.(classType)
+	objectClassType, ok := object.(*classType)
 	if !ok {
 		c.errorNoLine("object must be an instance of a class")
 	}
@@ -391,7 +402,7 @@ func (c *TypeChecker) VisitLogicalExpr(expr ast.LogicalExpr) interface{} {
 func (c *TypeChecker) VisitSetExpr(expr ast.SetExpr) interface{} {
 	object := c.check(expr.Object)
 
-	objectAsClassType, ok := object.(classType)
+	objectAsClassType, ok := object.(*classType)
 	if !ok {
 		c.error(expr.StartLine(), "only instances have fields")
 	}
@@ -407,12 +418,20 @@ func (c *TypeChecker) VisitSetExpr(expr ast.SetExpr) interface{} {
 }
 
 func (c *TypeChecker) VisitSuperExpr(expr ast.SuperExpr) interface{} {
-	// TODO implement me
-	panic("implement me")
+	distance, _ := c.interpreter.GetLocalDistance(expr)
+	superclass := c.env.GetAt(distance, "super").(*classType)
+
+	method, err := superclass.properties.Get(expr.Method.Lexeme)
+	if err != nil {
+		c.error(expr.EndLine(), err.Error())
+	}
+
+	return method
 }
 
 func (c *TypeChecker) VisitThisExpr(expr ast.ThisExpr) interface{} {
-	return c.enclosingClass
+	distance, _ := c.interpreter.GetLocalDistance(expr)
+	return c.env.GetAt(distance, "this")
 }
 
 func (c *TypeChecker) VisitTernaryExpr(expr ast.TernaryExpr) interface{} {

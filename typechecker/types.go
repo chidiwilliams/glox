@@ -129,11 +129,11 @@ type classType struct {
 	properties *env.Environment
 }
 
-func (t classType) String() string {
+func (t *classType) String() string {
 	return t.name
 }
 
-func (t classType) equals(t2 loxType) bool {
+func (t *classType) equals(t2 loxType) bool {
 	if t == t2 {
 		return true
 	}
@@ -149,7 +149,7 @@ func (t classType) equals(t2 loxType) bool {
 	return false
 }
 
-func (t classType) getField(name string) (loxType, error) {
+func (t *classType) getField(name string) (loxType, error) {
 	fieldType, err := t.properties.Get(name)
 	if err != nil {
 		return nil, err
@@ -157,7 +157,7 @@ func (t classType) getField(name string) (loxType, error) {
 	return fieldType.(loxType), nil
 }
 
-func (t classType) getConstructor() (functionType, error) {
+func (t *classType) getConstructor() (functionType, error) {
 	constructor, err := t.getField("init")
 	if err == env.ErrUndefined {
 		return newFunctionType("", []loxType{}, t), nil
@@ -167,14 +167,14 @@ func (t classType) getConstructor() (functionType, error) {
 	return constructor.(functionType), nil
 }
 
-func newClassType(name string, superClass loxType) classType {
+func newClassType(name string, superClass *classType) *classType {
 	var enclosingEnv *env.Environment
-	if superClassAsClassType, ok := superClass.(classType); ok {
-		enclosingEnv = superClassAsClassType.properties
+	if superClass != nil {
+		enclosingEnv = superClass.properties
 	}
 
 	properties := env.New(enclosingEnv)
-	return classType{
+	return &classType{
 		name:       name,
 		superClass: superClass,
 		properties: properties,

@@ -1,0 +1,29 @@
+class Point {
+    x: number = 0;
+    y: number = 0;
+
+    init(x: number, y: number) {
+        this.x = x;
+        this.y = y;
+    }
+
+    calc(): number {
+        return this.x + this.y;
+    }
+}
+
+class Point3D < Point {
+    z: number = 0;
+
+    init(x:number, y: number, z: number) {
+        super.init(x, y);
+        this.z = z;
+    }
+
+    calc(): number {
+        return super.calc() + this.z;
+    }
+}
+
+var point3D: Point3D = Point3D(1, 2, 3);
+print point3D.calc();

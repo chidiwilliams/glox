@@ -181,13 +181,11 @@ type SuperExpr struct {
 }
 
 func (b SuperExpr) StartLine() int {
-	// TODO implement me
-	panic("implement me")
+	return b.Keyword.Line
 }
 
 func (b SuperExpr) EndLine() int {
-	// TODO implement me
-	panic("implement me")
+	return b.Method.Line
 }
 
 func (b SuperExpr) Accept(visitor ExprVisitor) interface{} {
