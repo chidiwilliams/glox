@@ -33,12 +33,12 @@ type TypeChecker struct {
 
 func (c *TypeChecker) VisitTypeDeclStmt(stmt ast.TypeDeclStmt) interface{} {
 	if c.env.Has(stmt.Name.Lexeme) {
-		c.errorNoLine(fmt.Sprintf("Type with name %s is already defined.", stmt.Name.Lexeme))
+		c.error(stmt.Name.Line, fmt.Sprintf("type with name %s is already defined.", stmt.Name.Lexeme))
 	}
 
 	baseType := c.typeFromParsed(stmt.Base)
 	if baseType == nil {
-		c.errorNoLine(fmt.Sprintf("Type %v is not defined", stmt.Base))
+		c.error(stmt.Name.Line, fmt.Sprintf("type %v is not defined.", stmt.Base))
 	}
 
 	alias := newAliasType(stmt.Name.Lexeme, baseType)
@@ -367,12 +367,12 @@ func (c *TypeChecker) VisitGetExpr(expr ast.GetExpr) interface{} {
 
 	objectClassType, ok := object.(*classType)
 	if !ok {
-		c.errorNoLine("object must be an instance of a class")
+		c.error(expr.Object.StartLine(), "object must be an instance of a class")
 	}
 
 	field, err := objectClassType.getField(expr.Name.Lexeme)
 	if err != nil {
-		c.errorNoLine(err.Error())
+		c.error(expr.Name.Line, err.Error())
 	}
 
 	return field
@@ -409,7 +409,7 @@ func (c *TypeChecker) VisitSetExpr(expr ast.SetExpr) interface{} {
 
 	property, err := objectAsClassType.properties.Get(expr.Name.Lexeme)
 	if err != nil {
-		c.errorNoLine("property does not exist on class")
+		c.error(expr.Name.Line, "property does not exist on class")
 	}
 
 	valueType := c.check(expr.Value)
@@ -495,7 +495,6 @@ func (c *TypeChecker) typeFromParsed(parsedType ast.Type) loxType {
 			}
 		}
 	case ast.UnionType:
-		// TODO: check for nils
 		left := c.typeFromParsed(parsed.Left)
 		right := c.typeFromParsed(parsed.Right)
 		return unionType{left: left, right: right}
@@ -525,10 +524,6 @@ func (c *TypeChecker) expectOperatorType(inputType loxType, allowedTypes loxType
 	}
 
 	c.error(expr.StartLine(), fmt.Sprintf("unexpected type: %v, allowed: %v", inputType, allowedTypes))
-}
-
-func (c *TypeChecker) errorNoLine(message string) {
-	panic(typeError{message: message})
 }
 
 func (c *TypeChecker) error(line int, message string) {
