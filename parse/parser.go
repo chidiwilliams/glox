@@ -42,8 +42,9 @@ Parser grammar:
 	function     => IDENTIFIER parameterList ( ":" type )? block
 	parameters   => IDENTIFIER ( ":" type )? ( "," IDENTIFIER ( ":" type )? )*
 	varDecl      => "var" IDENTIFIER ( ":" type )? ( "=" expression )? ";"
-	type         => "[" type ( "," type )* "]"
-                  | IDENTIFIER ( "<" type ( "," type )* ">" )?
+	type         => ( "[" type ( "," type )* "]"
+                  | IDENTIFIER ( "<" type ( "," type )* ">" )? )
+                  ( "|" type )*
 	typeDecl     => "type" IDENTIFIER "=" type ";"
 	statement    => exprStmt | ifStmt | forStmt | printStmt | returnStmt | whileStmt
 									| breakStmt | continueStmt | block
@@ -184,6 +185,8 @@ func (p *Parser) typeDeclaration() ast.Stmt {
 }
 
 func (p *Parser) typeAnnotation() ast.Type {
+	var parsedType ast.Type
+
 	// Array type
 	if p.match(ast.TokenLeftBracket) {
 		types := make([]ast.Type, 0)
@@ -199,10 +202,8 @@ func (p *Parser) typeAnnotation() ast.Type {
 
 		p.consume(ast.TokenRightBracket, "Expect ']' after type list.")
 
-		return ast.ArrayType{Types: types}
-	}
-
-	if p.match(ast.TokenIdentifier) {
+		parsedType = ast.ArrayType{Types: types}
+	} else if p.match(ast.TokenIdentifier) {
 		typeName := p.previous().Lexeme
 
 		var genericArgs []ast.Type
@@ -221,11 +222,17 @@ func (p *Parser) typeAnnotation() ast.Type {
 			p.consume(ast.TokenGreater, "Expect '>' after generic arguments.")
 		}
 
-		return ast.SingleType{Name: typeName, GenericArgs: genericArgs}
+		parsedType = ast.SingleType{Name: typeName, GenericArgs: genericArgs}
+	} else {
+		p.error(p.previous(), "Could not parse type annotation.")
 	}
 
-	p.error(p.previous(), "Could not parse type annotation.")
-	return nil
+	for p.match(ast.TokenPipe) {
+		nextType := p.typeAnnotation()
+		parsedType = ast.UnionType{Left: parsedType, Right: nextType}
+	}
+
+	return parsedType
 }
 
 // statement parses statements. A statement can be a print,

@@ -17,7 +17,7 @@ func (e typeError) Error() string {
 
 type loxType interface {
 	String() string
-	equals(t loxType) bool
+	contains(other loxType) bool
 }
 
 type primitiveType struct {
@@ -32,11 +32,12 @@ func (t primitiveType) String() string {
 	return t.name
 }
 
-func (t primitiveType) equals(t2 loxType) bool {
-	if _, ok := t2.(aliasType); ok {
-		return t2.equals(t)
+func (t primitiveType) contains(other loxType) bool {
+	if other, ok := other.(aliasType); ok {
+		return t.contains(other.parent)
 	}
-	return t == t2
+
+	return t == other
 }
 
 var (
@@ -56,17 +57,17 @@ type functionType struct {
 	returnType loxType
 }
 
-func (t functionType) equals(t2 loxType) bool {
-	if _, ok := t2.(aliasType); ok {
-		return t2.equals(t)
+func (t functionType) contains(other loxType) bool {
+	if other, ok := other.(aliasType); ok {
+		return t.contains(other.parent)
 	}
 
-	fnType, ok := t2.(functionType)
+	fnType, ok := other.(functionType)
 	if !ok {
 		return false
 	}
 
-	if !fnType.returnType.equals(t.returnType) {
+	if !t.returnType.contains(fnType.returnType) {
 		return false
 	}
 
@@ -75,7 +76,7 @@ func (t functionType) equals(t2 loxType) bool {
 	}
 
 	for i, paramType := range fnType.paramTypes {
-		if !paramType.equals(t.paramTypes[i]) {
+		if !t.paramTypes[i].contains(paramType) {
 			return false
 		}
 	}
@@ -116,11 +117,12 @@ func (t aliasType) String() string {
 	return t.name
 }
 
-func (t aliasType) equals(t2 loxType) bool {
-	if t.String() == t2.String() {
+func (t aliasType) contains(other loxType) bool {
+	if other, ok := other.(aliasType); ok && t.name == other.name {
 		return true
 	}
-	return t.parent.equals(t2)
+
+	return t.parent.contains(other)
 }
 
 type classType struct {
@@ -133,17 +135,17 @@ func (t *classType) String() string {
 	return t.name
 }
 
-func (t *classType) equals(t2 loxType) bool {
-	if t == t2 {
+func (t *classType) contains(other loxType) bool {
+	if t == other {
 		return true
 	}
 
-	if alias, ok := t2.(aliasType); ok {
-		return alias.equals(t)
+	if alias, ok := other.(aliasType); ok {
+		return alias.contains(t)
 	}
 
 	if t.superClass != nil {
-		return t.superClass.equals(t2)
+		return t.superClass.contains(other)
 	}
 
 	return false
@@ -155,16 +157,6 @@ func (t *classType) getField(name string) (loxType, error) {
 		return nil, err
 	}
 	return fieldType.(loxType), nil
-}
-
-func (t *classType) getConstructor() (functionType, error) {
-	constructor, err := t.getField("init")
-	if err == env.ErrUndefined {
-		return newFunctionType("", []loxType{}, t), nil
-	} else if err != nil {
-		return functionType{}, err
-	}
-	return constructor.(functionType), nil
 }
 
 func newClassType(name string, superClass *classType) *classType {
@@ -179,4 +171,25 @@ func newClassType(name string, superClass *classType) *classType {
 		superClass: superClass,
 		properties: properties,
 	}
+}
+
+type unionType struct {
+	left  loxType
+	right loxType
+}
+
+func (t unionType) String() string {
+	return fmt.Sprintf("%s | %s", t.left.String(), t.right.String())
+}
+
+func (t unionType) contains(other loxType) bool {
+	if other == t {
+		return true
+	}
+
+	if other, ok := other.(unionType); ok {
+		return t.contains(other.left) && t.contains(other.right)
+	}
+
+	return t.left.contains(other) || t.right.contains(other)
 }

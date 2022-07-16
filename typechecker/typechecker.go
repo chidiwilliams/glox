@@ -163,7 +163,7 @@ func (c *TypeChecker) checkMethod(class *classType, stmt ast.FunctionStmt) funct
 
 	inferredReturnType := c.checkFunctionBody(body, fnEnv, returnType)
 
-	if parsedReturnType != nil && !inferredReturnType.equals(returnType) {
+	if parsedReturnType != nil && !returnType.contains(inferredReturnType) {
 		panic(typeError{message: fmt.Sprintf("expected function %s to return %s, but got %s", body, parsedReturnType, inferredReturnType)})
 	}
 
@@ -201,7 +201,7 @@ func (c *TypeChecker) VisitReturnStmt(stmt ast.ReturnStmt) interface{} {
 		returnType = c.check(stmt.Value)
 	}
 
-	if c.declaredFnReturnType != nil && !c.declaredFnReturnType.equals(returnType) {
+	if c.declaredFnReturnType != nil && !c.declaredFnReturnType.contains(returnType) {
 		panic(typeError{message: fmt.Sprintf("expected enclosing function to return '%s', but got '%s'", c.declaredFnReturnType, returnType)})
 	}
 
@@ -231,16 +231,16 @@ func (c *TypeChecker) VisitBreakStmt(stmt ast.BreakStmt) interface{} {
 
 func (c *TypeChecker) VisitVarStmt(stmt ast.VarStmt) interface{} {
 	if stmt.Initializer != nil {
-		// Infer actual tag
+		// Infer actual type
 		valueType := c.check(stmt.Initializer)
 
-		// With type check
-		if stmt.TypeDecl != nil {
+		if stmt.TypeDecl == nil {
+			c.env.Define(stmt.Name.Lexeme, valueType)
+		} else { // With type check
 			expectedType := c.typeFromParsed(stmt.TypeDecl)
 			c.expect(valueType, expectedType, stmt.Initializer, stmt.Initializer)
+			c.env.Define(stmt.Name.Lexeme, expectedType)
 		}
-
-		c.env.Define(stmt.Name.Lexeme, valueType)
 	}
 	return nil
 }
@@ -342,7 +342,7 @@ func (c *TypeChecker) checkFunction(name *ast.Token, params []ast.Param, body []
 
 	inferredReturnType := c.checkFunctionBody(body, fnEnv, returnType)
 
-	if parsedReturnType != nil && !inferredReturnType.equals(returnType) {
+	if parsedReturnType != nil && !returnType.contains(inferredReturnType) {
 		panic(typeError{message: fmt.Sprintf("expected function %s to return %s, but got %s", body, parsedReturnType, inferredReturnType)})
 	}
 
@@ -494,33 +494,37 @@ func (c *TypeChecker) typeFromParsed(parsedType ast.Type) loxType {
 				return t
 			}
 		}
+	case ast.UnionType:
+		// TODO: check for nils
+		left := c.typeFromParsed(parsed.Left)
+		right := c.typeFromParsed(parsed.Right)
+		return unionType{left: left, right: right}
 	}
 	return nil
 }
 
 func (c *TypeChecker) expect(actual loxType, expected loxType, value ast.Expr, expr ast.Expr) loxType {
-	if !actual.equals(expected) {
+	if !expected.contains(actual) {
 		c.error(value.StartLine(), fmt.Sprintf("expected '%s' type, but got '%s'", expected.String(), actual.String()))
 	}
 	return actual
 }
 
-func (c *TypeChecker) getOperandTypesForOperator(operator ast.Token) []loxType {
+func (c *TypeChecker) getOperandTypesForOperator(operator ast.Token) loxType {
 	switch operator.Lexeme {
 	case "+":
-		return []loxType{typeNumber, typeString}
+		return unionType{typeNumber, typeString}
 	default:
-		return []loxType{typeNumber}
+		return typeNumber
 	}
 }
 
-func (c *TypeChecker) expectOperatorType(inputType loxType, allowedTypes []loxType, expr ast.Expr) {
-	for _, allowedType := range allowedTypes {
-		if allowedType.equals(inputType) {
-			return
-		}
+func (c *TypeChecker) expectOperatorType(inputType loxType, allowedTypes loxType, expr ast.Expr) {
+	if allowedTypes.contains(inputType) {
+		return
 	}
-	c.errorNoLine(fmt.Sprintf("unexpected type: %v in %v, allowed: %v", inputType, expr, allowedTypes))
+
+	c.error(expr.StartLine(), fmt.Sprintf("unexpected type: %v in %v, allowed: %v", inputType, expr, allowedTypes))
 }
 
 func (c *TypeChecker) errorNoLine(message string) {

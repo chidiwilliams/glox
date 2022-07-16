@@ -1,0 +1,11 @@
+var a: string | number = 0;
+var b: number | string = "hello";
+
+b = a;
+
+var c: number | string | bool = true;
+c = b;
+
+type alias = number | string | bool;
+var d: alias = false;
+d = c;

@@ -67,6 +67,8 @@ func (s *Scanner) scanToken() {
 		s.addToken(ast.TokenStar)
 	case '?':
 		s.addToken(ast.TokenQuestionMark)
+	case '|':
+		s.addToken(ast.TokenPipe)
 
 	// with look-ahead
 	case '!':

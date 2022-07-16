@@ -21,6 +21,7 @@ const (
 	TokenStar
 	TokenColon
 	TokenQuestionMark
+	TokenPipe
 
 	// one or two character tokens
 	TokenBang
