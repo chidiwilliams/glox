@@ -524,7 +524,7 @@ func (c *TypeChecker) expectOperatorType(inputType loxType, allowedTypes loxType
 		return
 	}
 
-	c.error(expr.StartLine(), fmt.Sprintf("unexpected type: %v in %v, allowed: %v", inputType, expr, allowedTypes))
+	c.error(expr.StartLine(), fmt.Sprintf("unexpected type: %v, allowed: %v", inputType, allowedTypes))
 }
 
 func (c *TypeChecker) errorNoLine(message string) {

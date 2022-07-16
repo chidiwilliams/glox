@@ -1,0 +1,4 @@
+var x: string | number = "hello";
+var y: string | number = 32;
+
+print x + y;

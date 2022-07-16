@@ -1,1 +1,1 @@
-type error on line 2: unexpected type: string in {{24 firstName %!s(<nil>)} 8 - %!s(<nil>) {24 lastName %!s(<nil>)}}, allowed: number
+type error on line 2: unexpected type: string, allowed: number
